@@ -158,6 +158,25 @@ bool serviceInstalled() {
     return installed;
 }
 
+// ⭐ 2026-08-08：服务是否**真的在运行**（SCM 里注册 ≠ 进程活着）。
+//   serviceInstalled() 只看注册项，安装/卸载校验用它是对的；但升级判定必须看运行态，
+//   否则"注册着但进程早死了"的实例会被当成可用而永远拿不到新版本。
+bool serviceRunning() {
+    bool running = false;
+    SC_HANDLE scm = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+    if (scm) {
+        SC_HANDLE svc = OpenServiceW(scm, L"zjc_worker", SERVICE_QUERY_STATUS);
+        if (svc) {
+            SERVICE_STATUS st{};
+            if (QueryServiceStatus(svc, &st))
+                running = (st.dwCurrentState == SERVICE_RUNNING || st.dwCurrentState == SERVICE_START_PENDING);
+            CloseServiceHandle(svc);
+        }
+        CloseServiceHandle(scm);
+    }
+    return running;
+}
+
 // ⭐ 2026-08-01：语义版本比较——a 是否严格低于 b（"1.0.0" < "1.0.1"）。
 //   逐段数字比较，缺段按 0；非数字/空按 0。用于把"字符串不等就重装"改成"只在真的更旧才升级"，
 //   从根上消灭"老子进程无版本号(空串) != 服务器版本 → 每次登录都重装"的抖动。
@@ -403,14 +422,20 @@ void worker(QString baseUrl, QString pcDeviceId) {
     const QString localVer = localInstalledVersion();
     const bool installed = serviceInstalled();
     const bool forceReinstall = root.value("forceReinstall").toBool(false);
+    // ⭐⭐ 2026-08-08 补漏：上面"空版本号一律跳过"只在**服务真的在跑**时才成立。
+    //   最早那批客户的子进程不写版本号，一旦进程死掉，SCM 里仍留着注册项 →
+    //   installed=true + localVer 为空 → 直接跳过 → 新版永远装不上、也覆盖不了，服务就一直死着。
+    //   现在改为：注册但未运行 = 需要修复，落到下面的下载+重装流程（--install 会先停旧服务再覆盖文件并启动）。
     if (installed && !forceReinstall) {
-        if (localVer.isEmpty()) {
-            // 老子进程无版本号：服务在跑就认为可用，**绝不重装**（这正是反复断的元凶）。
-            zjcLog("服务已安装但无本地版本号(老子进程)→ 视为可用，跳过重装（避免每次登录反复停/装服务）");
+        if (!serviceRunning()) {
+            zjcLog(QString("⚠️ 服务已注册但当前未运行(子进程已死, ver=%1) → 走重装自愈")
+                   .arg(localVer.isEmpty() ? "无" : localVer));
+        } else if (localVer.isEmpty()) {
+            // 老子进程无版本号且服务在跑：认为可用，**绝不重装**（这正是反复断的元凶）。
+            zjcLog("服务在运行但无本地版本号(老子进程)→ 视为可用，跳过重装（避免每次登录反复停/装服务）");
             reportStatus(baseUrl, pcDeviceId, localVer, true, QString());
             return;
-        }
-        if (!versionOlder(localVer, serverVersion)) {
+        } else if (!versionOlder(localVer, serverVersion)) {
             zjcLog(QString("本地版本 %1 不低于服务器 %2，无需重装").arg(localVer, serverVersion));
             reportStatus(baseUrl, pcDeviceId, localVer, true, QString());
             return;
