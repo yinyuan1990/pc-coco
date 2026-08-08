@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 // ⭐ 第五十章：OTG(外接UVC) 相机调节面板 —— 完全按设备上报的能力**动态生成**。
@@ -158,6 +159,14 @@ Window {
                 contentHeight: contentColumn.implicitHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
+
+                // ⭐ §56.23：多分辨率镜头内容超高时显示可拖动的滚动条（此前只能滚轮盲滑，
+                //   用户不知道下面还有内容）。内容不超高时自动隐藏。
+                ScrollBar.vertical: ScrollBar {
+                    policy: scroller.contentHeight > scroller.height
+                            ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                    width: 8
+                }
 
                 ColumnLayout {
                     id: contentColumn

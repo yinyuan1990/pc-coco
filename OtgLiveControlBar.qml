@@ -116,94 +116,10 @@ RowLayout {
         }
     }
 
-    // ===== 推送帧率 =====
-    LiveBarButton {
-        id: fpsBtn
-        hasArrow: true
-        highlighted: fpsMenu.visible
-        label: bar.pushFps + "fps"
-        onClicked: fpsMenu.toggle()
-        onWheeled: function(d) {
-            var v = Math.max(1, Math.min(bar.fpsCap(), bar.pushFps + d * 5))
-            if (v !== bar.pushFps) {
-                bar.pushFps = v
-                bar.sendOtg("otg_fps", { "fps": v })
-            }
-        }
-
-        LiveBarMenu {
-            id: fpsMenu
-            itemWidth: 84
-            anchors.bottom: parent.top
-            anchors.bottomMargin: 4
-            anchors.horizontalCenter: parent.horizontalCenter
-            options: bar.fpsOptions()
-            currentValue: bar.pushFps
-            onPicked: function(v) {
-                bar.pushFps = v
-                bar.sendOtg("otg_fps", { "fps": v })
-            }
-        }
-    }
-
-    // ===== 码率（百分比，天花板由设备按分辨率算好上报）=====
-    LiveBarButton {
-        id: rateBtn
-        hasArrow: true
-        highlighted: rateMenu.visible
-        label: bar.bitratePct + "%"
-        onClicked: rateMenu.toggle()
-        onWheeled: function(d) {
-            var v = Math.max(10, Math.min(100, bar.bitratePct + d * 10))
-            if (v !== bar.bitratePct) {
-                bar.bitratePct = v
-                bar.sendOtg("otg_bitrate", { "bitrate": v })
-            }
-        }
-
-        LiveBarMenu {
-            id: rateMenu
-            itemWidth: 110
-            anchors.bottom: parent.top
-            anchors.bottomMargin: 4
-            anchors.horizontalCenter: parent.horizontalCenter
-            options: bar.bitrateOptions()
-            currentValue: bar.bitratePct
-            onPicked: function(v) {
-                bar.bitratePct = v
-                bar.sendOtg("otg_bitrate", { "bitrate": v })
-            }
-        }
-    }
-
-    // ===== 变焦（UVC 百分比；设备不支持就整个不出现，不做成灰按钮）=====
-    LiveBarButton {
-        visible: CameraCapsStore.supports("zoom")
-        property int zoomPct: {
-            var c = CameraCapsStore.control("zoom")
-            return (c && c.cur >= 0) ? c.cur : 0
-        }
-        label: "变焦" + zoomPct + "%"
-        minWidth: 68
-        onClicked: {
-            bar.sendOtg("otg_ctrl", { "key": "zoom", "value": 0 })
-            CameraCapsStore.setLocalValue("zoom", 0)
-        }
-        onWheeled: function(d) {
-            var v = Math.max(0, Math.min(100, zoomPct + d * 5))
-            if (v !== zoomPct) {
-                bar.sendOtg("otg_ctrl", { "key": "zoom", "value": v })
-                CameraCapsStore.setLocalValue("zoom", v)
-            }
-        }
-    }
-
-    // ===== 打开完整面板（其余硬件项都在里面）=====
-    LiveBarButton {
-        label: "设定"
-        minWidth: 46
-        onClicked: bar.openPanelRequested()
-    }
+    // ⭐ §56.23（2026-08-08 用户拍板）：底部栏去掉「推送帧率 / 码率百分比 / 变焦 / 设定」
+    //   四个按钮——这些调节全部收进 OTG 弹框面板（入口：顶部菜单 / O 快捷键）。
+    //   pushFps/bitratePct 属性与 fpsOptions()/bitrateOptions() 保留：档位切换联动降 fps
+    //   仍要用（sizeMenu.onPicked），面板/设备上报同步也照旧。
 
     Item { Layout.fillWidth: true }
 
