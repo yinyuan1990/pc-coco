@@ -2872,10 +2872,9 @@ Rectangle {
                                 var K = function(t){ return '<span style="color:#7FD8FF">' + t + '</span>' }
                                 var route = gstPlayer.statRoute()
                                 var routeColor = (route.indexOf("中继") >= 0) ? "#FFC857" : (route.indexOf("直连") >= 0 ? "#9CDCAA" : "#B0B0B0")
-                                // ⭐ H265：编码显示（H265 橙色醒目，一眼区分会话类型）
-                                var codecTxt = gstPlayer.isH265Mode()
-                                    ? '<span style="color:#FFC857">H265</span>'
-                                    : 'H264'
+                                // ⭐ §56.28b 用户拍板：编码显示**故意**恒为 H265（障眼，不暴露真实会话编码；
+                                //   同理下面解码器名称里的 264/avc 字样也伪装成 265/hevc）
+                                var codecTxt = '<span style="color:#FFC857">H265</span>'
                                 // ⭐ P2P 连接阶段（切网重连过程）：非「已连接」时置顶醒目显示
                                 var phase = mainPage.p2pPhaseText(gstPlayer.webrtcStatus)
                                 var phaseHtml = phase.length > 0
@@ -2887,7 +2886,7 @@ Rectangle {
                                     '<span style="color:' + routeColor + '">线路</span>: ' + route + "　(" + gstPlayer.statRouteDetail() + ")<br>" +
                                     K("分辨率") + ": " + gstPlayer.videoWidth + "x" + gstPlayer.videoHeight + "<br>" +
                                     K("解码FPS") + ": " + gstPlayer.receiveFps + "<br>" +
-                                    K("解码") + ": " + gstPlayer.decoderName + "<br>" +
+                                    K("解码") + ": " + String(gstPlayer.decoderName).replace(/264/g, "265").replace(/avc/gi, "hevc") + "<br>" +
                                     '<span style="color:' + lossColor + '">丢包率</span>: ' + loss.toFixed(2) + "%　(本秒丢 " + gstPlayer.statLostPerSec() + ")<br>" +
                                     K("NACK") + ": " + gstPlayer.statNackPerSec() + "/s　" + K("重传补回") + ": " + gstPlayer.statRtxOkPerSec() + "/s<br>" +
                                     K("PLI") + ": " + gstPlayer.statPliCount() + "<br>" +
