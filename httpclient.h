@@ -127,6 +127,9 @@ public:
 
     // §44.3 获取最新版 PC 客户端下载地址（公开接口，无需登录）；结果经 latestDownloadUrlReceived 返回
     Q_INVOKABLE void fetchLatestDownloadUrl();
+
+    // §56.29 获取 OTG 专版（看家Otg版本）下载地址；主版连到 OTG 设备时提示下载。结果经 otgClientDownloadUrlReceived 返回
+    Q_INVOKABLE void fetchOtgClientDownloadUrl();
     
     // 注册接口（带昵称）
     Q_INVOKABLE void registerUser(const QString &username, const QString &password, const QString &nickname);
@@ -263,6 +266,8 @@ signals:
     void loginNeedUpdate(const QString &message, const QString &downloadUrl);
     // §44.3 最新版下载地址获取结果（登录页"最新版下载"按钮用）
     void latestDownloadUrlReceived(const QString &url);
+    // §56.29 OTG 专版下载地址获取结果（主版连 OTG 设备时的下载提示用；与上面独立，避免与登录页预取竞态）
+    void otgClientDownloadUrlReceived(const QString &url);
     
     // 注册结果信号
     void registerSuccess(const QString &username, const QString &message);

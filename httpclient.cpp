@@ -419,6 +419,23 @@ void HttpClient::fetchLatestDownloadUrl()
     });
 }
 
+// §56.29 获取 OTG 专版下载地址（variant=otg → 后端取 app.update.config.pcotg.downloadUrl）
+void HttpClient::fetchOtgClientDownloadUrl()
+{
+    QNetworkReply *reply = get("/api/auth/latest-download?variant=otg");
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QString url;
+        QByteArray responseData = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        if (!doc.isNull() && doc.isObject()) {
+            url = doc.object().value("url").toString();
+        }
+        qDebug() << "[OtgClientDownload] url:" << url;
+        emit otgClientDownloadUrlReceived(url);
+    });
+}
+
 // ⭐ 生成/获取PC设备唯一标识（基于Windows MachineGuid + MAC地址）
 QString HttpClient::generatePcDeviceId()
 {

@@ -45,6 +45,9 @@ Rectangle {
     //   手动路径不受影响（帧率滑块/滚轮/相机设定还原照常下发）。
     property bool fpsAutoPushDisabled: false
 
+    // ⭐ §56.29：主版(PC-SRS)连到 OTG 设备时提示下载 OTG 专版——每次连上 OTG 设备提示一次（isOtg 置回 false 时复位）
+    property bool otgClientPromptShown: false
+
     // P2P 直连模式属性
     property int connectMode: 0                        // 0=SRS模式, 1=P2P直连模式, 2=SRT模式（来自CONFIG_STATE.state.connectstype）
     property string videoCodec: "h264"                 // ⭐ H265：P2P 实际编码（来自CONFIG_STATE.state.videoCodec，iOS 登录页二级选项）
@@ -5016,8 +5019,63 @@ Rectangle {
     Connections {
         target: CameraCapsStore
         function onIsOtgChanged() {
-            if (CameraCapsStore.isOtg && iosCameraSettingsPopup.visible)
-                iosCameraSettingsPopup.close()
+            if (CameraCapsStore.isOtg) {
+                if (iosCameraSettingsPopup.visible)
+                    iosCameraSettingsPopup.close()
+                // ⭐ §56.29 主版连到 OTG 设备 → 拉取 OTG 专版下载地址，弹框提示下载（本次连接只提示一次）
+                if (!mainPage.otgClientPromptShown) {
+                    mainPage.otgClientPromptShown = true
+                    HttpClient.fetchOtgClientDownloadUrl()
+                }
+            } else {
+                // 断开/切设备/退出 → 复位，下次连 OTG 再提示一次
+                mainPage.otgClientPromptShown = false
+            }
+        }
+    }
+
+    // ⭐ §56.29 OTG 专版下载地址返回 → 打开提示弹框
+    Connections {
+        target: HttpClient
+        function onOtgClientDownloadUrlReceived(url) {
+            if (!CameraCapsStore.isOtg) return   // 地址回来时已经切走了就别弹
+            otgClientPromptDialog.downloadUrl = (url && url.length > 0) ? url : ""
+            otgClientPromptDialog.open()
+        }
+    }
+
+    // ⭐ §56.29 不支持提示弹框：主版(PC-SRS)连到「外接 OTG 摄像头」设备时——本版本不支持，引导下载 OTG 专版
+    Dialog {
+        id: otgClientPromptDialog
+        property string downloadUrl: ""
+        title: "此设备不受支持"
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        closePolicy: Popup.CloseOnEscape
+
+        Label {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: "检测到当前设备为「外接 OTG 摄像头」，本版本不支持观看此类设备。\n\n" +
+                  "请下载安装「看家Otg版本」专用客户端观看（两个版本可同机并存、互不影响）。"
+        }
+
+        footer: DialogButtonBox {
+            Button {
+                text: "知道了"
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+            Button {
+                text: "下载 OTG 版"
+                enabled: otgClientPromptDialog.downloadUrl.length > 0
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+        }
+
+        onAccepted: {
+            if (downloadUrl.length > 0)
+                Qt.openUrlExternally(downloadUrl)
         }
     }
 
