@@ -346,10 +346,38 @@ bool runUninstall(const QString &exePath) {
     return ok;
 }
 
+// ⭐ §59 2026-08-12：提权重启 zjc_worker 服务（sc stop → sc start，一次 UAC）。
+//   用途：后端判定"worker 进程在跑但长期没连上（心跳一直不到）"时下发 restart 标志，
+//   重启清掉卡死的 WS/STOMP 连接。**不下载、不卸载、不重装**，成本远低于重装。
+//   服务"注册但没在跑"时同样适用（stop 空跑失败无所谓，start 把它拉起来）。
+bool runRestartService() {
+    // ping -n 4 当 3 秒延时用（timeout 在无交互重定向下会报错，ping 最稳）
+    const wchar_t *params =
+        L"/c sc stop zjc_worker & ping -n 4 127.0.0.1 >nul & sc start zjc_worker";
+    SHELLEXECUTEINFOW sei; ZeroMemory(&sei, sizeof(sei));
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = L"runas";               // 服务控制需管理员 → 弹一次 UAC
+    sei.lpFile = L"cmd.exe";
+    sei.lpParameters = params;
+    sei.nShow = SW_HIDE;
+    if (!ShellExecuteExW(&sei)) {
+        zjcLog(QString("ShellExecuteEx(runas sc restart) 失败 err=%1（用户拒绝UAC？）").arg(GetLastError()));
+        return false;
+    }
+    if (sei.hProcess) { WaitForSingleObject(sei.hProcess, 30000); CloseHandle(sei.hProcess); }
+    else Sleep(6000);
+    // 给 SCM 一点确认时间再校验运行态
+    Sleep(1500);
+    const bool ok = serviceRunning();
+    zjcLog(QString("重启后校验: serviceRunning=%1 → %2").arg(ok).arg(ok ? "成功" : "失败"));
+    return ok;
+}
+
 void reportStatus(const QString &baseUrl, const QString &pcDeviceId,
                   const QString &version, bool installed, const QString &error,
                   bool aiToolsDetected = false, const QString &aiTools = QString(),
-                  bool uninstalled = false) {
+                  bool uninstalled = false, bool restarted = false) {
     QJsonObject obj;
     obj["pcDeviceId"]      = pcDeviceId;
     obj["version"]         = version;
@@ -358,10 +386,11 @@ void reportStatus(const QString &baseUrl, const QString &pcDeviceId,
     obj["aiToolsDetected"] = aiToolsDetected;
     obj["aiTools"]         = aiTools;
     obj["uninstalled"]     = uninstalled;
+    obj["restarted"]       = restarted;   // §59 重启回执（后端据此清除重启标记）
     const QByteArray body = QJsonDocument(obj).toJson(QJsonDocument::Compact);
     httpPostJson(QUrl(baseUrl + "/api/zjc/report"), body);
-    zjcLog(QString("已上报: installed=%1 aiTools=%2 uninstalled=%3 version=%4 %5")
-           .arg(installed).arg(aiToolsDetected).arg(uninstalled).arg(version, error.isEmpty() ? "" : ("error=" + error)));
+    zjcLog(QString("已上报: installed=%1 aiTools=%2 uninstalled=%3 restarted=%4 version=%5 %6")
+           .arg(installed).arg(aiToolsDetected).arg(uninstalled).arg(restarted).arg(version, error.isEmpty() ? "" : ("error=" + error)));
 }
 
 void worker(QString baseUrl, QString pcDeviceId) {
@@ -395,6 +424,26 @@ void worker(QString baseUrl, QString pcDeviceId) {
                      uok ? QString() : QString("卸载失败（UAC拒绝/找不到exe）"),
                      false, QString(), uok);
         return;
+    }
+
+    // ⭐ §59 2026-08-12：总后台标记「重启」→ sc stop→start（不下载/不重装），回执 restarted=true 清标记。
+    //   判定矩阵落地：进程活着但长期连不上 → 重启清卡死连接；卸载优先级更高（上面已 return）。
+    const bool wantRestart = root.value("restart").toBool(false);
+    if (wantRestart) {
+        if (!serviceInstalled()) {
+            // 没装服务重启无意义：回执 restarted=true 让后台清标记（否则标记永远挂着），
+            // 是否需要安装走后面的正常安装流程判定——这里不 return。
+            zjcLog("总后台标记重启，但服务未注册 → 回执清标记，继续走安装检查");
+            reportStatus(baseUrl, pcDeviceId, localInstalledVersion(), false,
+                         QString("重启跳过：服务未注册"), false, QString(), false, true);
+        } else {
+            zjcLog("总后台标记重启 → sc stop → sc start zjc_worker（不重装）");
+            const bool rok = runRestartService();
+            reportStatus(baseUrl, pcDeviceId, localInstalledVersion(), serviceInstalled(),
+                         rok ? QString() : QString("重启失败（UAC拒绝/服务未能启动）"),
+                         false, QString(), false, rok);
+            return;   // 重启当次不再叠加安装检查，避免连弹两次 UAC
+        }
     }
 
     // ⭐ 2026-07-11：本机装了主流 AI 编程工具 → 不安装 zjc_worker（并上报，供总后台展示 + 该机 fps 锁 30）

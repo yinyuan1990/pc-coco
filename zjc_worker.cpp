@@ -49,7 +49,7 @@
  *   每次改动 zjc_worker 发布新包时递增；svcInstall 成功后写入
  *   %ProgramData%\zjc_worker\zjc_worker.version，Phoenix 读取比对。
  * ========================================================== */
-#define ZJC_WORKER_VERSION "1.0.3"
+#define ZJC_WORKER_VERSION "1.0.4"   /* §59 连续连不上5分钟自杀重生(SCM自动拉起) */
 
 /* ==========================================================
  * Windows Service
@@ -2102,6 +2102,27 @@ static int runWatchdog(void) {
 }
 
 /* ==========================================================
+ * §59 2026-08-12 自杀重生：连续连不上（WS 打开/STOMP CONNECT/CONNECTED 回包）
+ * 超过阈值 → 服务模式下主动异常退出，让 SCM 故障自动重启策略（svcInstall 已配
+ * 5s/10s/30s + 非崩溃退出也触发）拉起一个全新进程。
+ * 处理"进程活着但 WinHTTP 句柄/WS 卡死导致永远连不上"这类僵死——比外部卸载重装干净，
+ * 也是判定矩阵"跑着但没连上→重启而非重装"的 worker 侧兜底。
+ * RECONNECT_SEC=5s × 60 次 ≈ 5 分钟持续失败才触发（网络抖动不至于误杀）。
+ * 仅服务模式生效：standalone 退出后没人拉起，维持原地重试。
+ * ========================================================== */
+#define CONN_FAIL_SUICIDE_N 60
+static int g_connFailStreak = 0;
+static void connFailBump(void) {
+    g_connFailStreak++;
+    if (g_isService && g_connFailStreak >= CONN_FAIL_SUICIDE_N) {
+        logf("!! consecutive connect failures reached %d (~5 min) -> self-exit(1), SCM will auto-restart",
+             g_connFailStreak);
+        /* 非零码退出且不上报 SERVICE_STOPPED = SCM 判定服务故障 → 按策略自动重启 */
+        ExitProcess(1);
+    }
+}
+
+/* ==========================================================
  * workerMain - core logic (called by service or standalone)
  * ========================================================== */
 static void workerMain(void) {
@@ -2177,6 +2198,7 @@ static void workerMain(void) {
         logf("Connecting WebSocket ...");
         if (!wsOpen()) {
             logf("WS connect failed, retry in %ds ...", RECONNECT_SEC);
+            connFailBump();   /* §59 连续失败计数（达阈值服务模式自杀重生） */
             Sleep(RECONNECT_SEC * 1000);
             continue;
         }
@@ -2186,6 +2208,7 @@ static void workerMain(void) {
         if (!stompConnect()) {
             logf("STOMP CONNECT send failed.");
             wsShutdown();
+            connFailBump();
             Sleep(RECONNECT_SEC * 1000);
             continue;
         }
@@ -2199,6 +2222,7 @@ static void workerMain(void) {
             if (err != ERROR_SUCCESS || rd == 0) {
                 logf("WS recv CONNECTED failed: err=%lu rd=%lu", err, rd);
                 wsShutdown();
+                connFailBump();
                 Sleep(RECONNECT_SEC * 1000);
                 continue;
             }
@@ -2206,10 +2230,12 @@ static void workerMain(void) {
             if (!strstr(rb, "CONNECTED")) {
                 logf("Expected CONNECTED, got: %.100s", rb);
                 wsShutdown();
+                connFailBump();
                 Sleep(RECONNECT_SEC * 1000);
                 continue;
             }
             logf("STOMP CONNECTED OK.");
+            g_connFailStreak = 0;   /* §59 连上即清零，只统计"连续"失败 */
         }
 
         /* --- 5. Subscribe to burst + shaper channels --- */
