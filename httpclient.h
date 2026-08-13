@@ -24,9 +24,9 @@ struct LoginResponse {
     QString status;
     QString message;
     QJsonArray bindingList;
-    int pcActivationLevel = 0;  // PC端等级，1=豪华版，2=至尊版
-    QString pcLevelName;         // 等级名称："豪华版"或"至尊版"
-    QString pcExpireAt;          // 至尊版到期时间（豪华版为空）
+    int pcActivationLevel = 0;  // PC端等级，1=豪华版，2=AI全能版
+    QString pcLevelName;         // 等级名称："豪华版"或"AI全能版"
+    QString pcExpireAt;          // AI全能版到期时间（豪华版为空）
     bool pcValid = true;         // 当前等级是否有效
     int deviceLevel = 1;         // iOS设备等级：0=试用, 1=标清, 2=高清, 3=超清, 4=4K
     
@@ -117,7 +117,7 @@ public:
     // 当前已连接设备是否 Android（滤镜路由用）
     Q_INVOKABLE bool currentIsAndroid() const { return isAndroidDeviceId(m_currentDeviceId); }
     
-    // 登录接口（pcLevel: 1=豪华版, 2=至尊版）
+    // 登录接口（pcLevel: 1=豪华版, 2=AI全能版）
     // ⭐ 2026-08-01 fallbackOnUnboundDevice：登录页路径置 true——带的设备账号已被解绑（iOS 改密
     //   会解绑全部 PC，code=1004）时自动清除本地设备记忆并不带设备重登一次（后端默认绑第一个绑定设备）。
     //   「切换设备」路径保持 false：目标设备是用户刚点选的，失败必须如实报错。
@@ -388,10 +388,10 @@ private:
     int m_loginGeneration = 0;
     QString m_currentDeviceId;
     QString m_currentDeviceUsername;  // ⭐ 本次登录实际绑定的设备账号
-    int m_pcActivationLevel = 0;  // PC端等级，1=豪华版，2=至尊版
+    int m_pcActivationLevel = 0;  // PC端等级，1=豪华版，2=AI全能版
     bool m_aiWhitelisted = false;  // ⭐ AI 白名单：登录响应 aiWhitelisted，命中则走原来 fps 逻辑（不锁 30）
     QString m_pcLevelName;         // 等级名称
-    QString m_pcExpireAt;          // 至尊版到期时间
+    QString m_pcExpireAt;          // AI全能版到期时间
     QString m_pcDeviceId;          // PC设备唯一标识
     int m_deviceLevel = 1;         // iOS设备等级：0=试用, 1=标清, 2=高清, 3=超清, 4=4K
     QVariantList m_levelFps;       // 各等级对应FPS上限，下标0=试用, 1=高清, 2=超清, 3=超高清, 4=超高帧

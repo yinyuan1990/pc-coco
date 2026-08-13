@@ -27,7 +27,7 @@ Rectangle {
     // 当前视图：login / register
     property string currentView: "login"
     property bool isLoggingIn: false
-    property int loggingInLevel: 0  // 正在登录的等级：0=无, 1=豪华版, 2=至尊版
+    property int loggingInLevel: 0  // 正在登录的等级：0=无, 1=豪华版, 2=AI全能版
     property string loginError: ""
     property string latestDownloadUrl: ""      // §44.3 最新版下载地址（公开接口获取）
     property bool pendingDownloadOpen: false   // 点了"最新版下载"但地址还没到，收到后立即打开
@@ -213,9 +213,10 @@ Rectangle {
             console.log("登录失败:", code, message)
             isLoggingIn = false
             loggingInLevel = 0
-            // ⭐ 特殊处理 code=1005（至尊版到期或未开通）
+            // ⭐ 特殊处理 code=1005（AI全能版到期或未开通）
+            // §57.1：文案固定用本地的——后端 message 里仍是内部命名「至尊版」，不能透出去
             if (code === 1005) {
-                loginError = message || "AI版已到期或未开通，请联系管理员"
+                loginError = "AI全能版已到期或未开通，请联系管理员"
             } else {
                 loginError = message
             }
@@ -1088,7 +1089,7 @@ Rectangle {
                 }
             }
             
-            // ⭐ 至尊版登录按钮（pcLevel=2）
+            // ⭐ AI全能版登录按钮（pcLevel=2）
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 58
@@ -1111,7 +1112,7 @@ Rectangle {
                     
                     Text {
                         anchors.centerIn: parent
-                        text: loggingInLevel === 2 ? "登录中..." : "AI版登录"
+                        text: loggingInLevel === 2 ? "登录中..." : "AI全能版登录"
                         font.family: "PingFang HK"
                         font.pixelSize: 24
                         font.weight: Font.Medium

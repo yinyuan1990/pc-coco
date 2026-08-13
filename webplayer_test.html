@@ -1022,9 +1022,9 @@
         else if (capWorkerOk) { capTxt = '<span class="k">Worker（离主线程）</span>'; }
         else { capTxt = '<span class="warn">主线程兜底</span>'; }
 
-        // [H265] 调试面板显示实际协商编码（H265 橙色醒目；来自 stats codecId → mimeType）
-        var codecShort = window._nhLastCodec ? window._nhLastCodec.replace(/^video\//i, '').toUpperCase() : '?';
-        var codecTxt = /H265|HEVC/.test(codecShort) ? '<span class="warn">' + codecShort + '</span>' : codecShort;
+        // ⭐ §57.3（补 §56.28b 的漏网：当时只改了 GStreamer 面板）：编码显示**故意**恒为 H265
+        //   （障眼，不暴露真实会话编码）。真实协商编码仍在 nh 日志的 `>> CODEC` 行里，排障不受影响。
+        var codecTxt = '<span class="warn">H265</span>';
 
         statsEl.innerHTML =
           '<span class="k">内核</span>: Chromium · ' + mode.toUpperCase() + ' · ' + codecTxt + '\n' +

@@ -307,7 +307,7 @@ void HttpClient::login(const QString &username, const QString &password, int pcL
         QJsonArray bindingList = obj["bindingList"].toArray();
         int pcLevelResp = obj["pcLevel"].toInt(0);         // ⭐ 字段改为 pcLevel
         QString pcLevelName = obj["pcLevelName"].toString();
-        QString pcExpireAt = obj["pcExpireAt"].toString();   // 至尊版到期时间（豪华版为 null）
+        QString pcExpireAt = obj["pcExpireAt"].toString();   // AI全能版到期时间（豪华版为 null）
         bool pcValid = obj["pcValid"].toBool(true);
         int deviceLevelResp = obj["deviceLevel"].toInt(1);   // ⭐ iOS设备等级：0=试用, 1=标清, 2=高清, 3=超清, 4=4K（默认1）
         

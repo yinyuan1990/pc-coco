@@ -27,13 +27,13 @@ Rectangle {
     // 退出登录信号
     signal logoutRequested()
     
-    // PC端激活等级：0=未激活，1=豪华版，2=至尊版
+    // PC端激活等级：0=未激活，1=豪华版，2=AI全能版
     property int pcActivationLevel: 0
     onPcActivationLevelChanged: {
         console.log("[抓拍全屏] pcActivationLevel 变化: 新值=" + pcActivationLevel + ", 抓拍全屏菜单项应该显示:" + (pcActivationLevel >= 2))
     }
-    property string pcLevelName: ""        // 等级名称："豪华版"或"至尊版"
-    property string pcExpireAt: ""         // 至尊版到期时间（豪华版为空）
+    property string pcLevelName: ""        // 等级名称："豪华版"或"AI全能版"
+    property string pcExpireAt: ""         // AI全能版到期时间（豪华版为空）
     
     // 从 Main.qml 传入的参数
     property string srsServer: ""
@@ -44,9 +44,6 @@ Rectangle {
     //   （双缓冲第二道防线 onRequestFpsChange / 切档后 fpsLimitPushTimer 补发 / 切档 fps 超限 clamp 下发）。
     //   手动路径不受影响（帧率滑块/滚轮/相机设定还原照常下发）。
     property bool fpsAutoPushDisabled: false
-
-    // ⭐ §56.29：主版(PC-SRS)连到 OTG 设备时提示下载 OTG 专版——每次连上 OTG 设备提示一次（isOtg 置回 false 时复位）
-    property bool otgClientPromptShown: false
 
     // P2P 直连模式属性
     property int connectMode: 0                        // 0=SRS模式, 1=P2P直连模式, 2=SRT模式（来自CONFIG_STATE.state.connectstype）
@@ -484,7 +481,7 @@ Rectangle {
                 "fromDevice": HttpClient.pcDeviceId(),
                 "pcUsername": HttpClient.loggedInUsername() || "",
                 "kernel": mainPage.useWebEngineKernel ? "web" : "gst",
-                "h265Recv": !mainPage.useWebEngineKernel,
+                "h265Recv": false,  // ⭐ aihj 版拍板：只要 H264，上报"不收 H265"让设备端永远没理由升 H265
                 // ⭐ §53.4：本机局域网 IPv4。设备端**在推流前**用它比 /24 网段决定 P2P 还是 SRS，
                 //   不必先建 WebRTC 会话再看 ICE 选中的候选对（那要等几秒且必须先推流）。
                 "localIps": WebSocketClient.localIpv4List(),
@@ -869,7 +866,7 @@ Rectangle {
         target: captureManager
         function onCaptureComplete(index) {
             // 抓拍完成后检查是否需要自动全屏
-            // ⭐ PC等级2(至尊版)才能自动触发抓拍全屏，pc=1不允许自动触发
+            // ⭐ PC等级2(AI全能版)才能自动触发抓拍全屏，pc=1不允许自动触发
             console.log("[抓拍全屏] onCaptureComplete: autoFullscreenOnCaptureFull=" + mainPage.autoFullscreenOnCaptureFull + ", count=" + captureManager.count + ", pcLevel=" + mainPage.pcActivationLevel)
             
             // PC等级检查：只有pc=2才能自动触发
@@ -1208,13 +1205,13 @@ Rectangle {
                         height: 22
                         anchors.verticalCenter: parent.verticalCenter
                         
-                        // 至尊版(2): 60-100 步进5；豪华版(1)及以下: 只有60
+                        // AI全能版(2): 60-100 步进5；豪华版(1)及以下: 只有60
                         model: mainPage.pcActivationLevel >= 2 ? [60, 65, 70, 75, 80, 85, 90, 95, 100] : [60]
                         
                         // ⭐ 从本地设置读取对应 index
                         currentIndex: {
                             if (mainPage.pcActivationLevel >= 2) {
-                                // 至尊版：计算 index: (value - 60) / 5，确保在有效范围
+                                // AI全能版：计算 index: (value - 60) / 5，确保在有效范围
                                 var savedQ = Math.max(60, Math.min(100, appSettings.screenshotQuality))
                                 return Math.max(0, Math.min(8, (savedQ - 60) / 5))
                             } else {
@@ -1810,7 +1807,8 @@ Rectangle {
             Text {
                 visible: mainPage.pcActivationLevel >= 1
                 text: {
-                    var name = mainPage.pcLevelName || (mainPage.pcActivationLevel >= 2 ? "至尊版" : "豪华版")
+                    // §57.1：一律本地按等级映射，不用后端下发的 pcLevelName（那边内部仍叫「至尊版」）
+                    var name = mainPage.pcActivationLevel >= 2 ? "AI全能版" : "豪华版"
                     if (mainPage.pcActivationLevel >= 2 && mainPage.pcExpireAt && mainPage.pcExpireAt !== "" && mainPage.pcExpireAt !== "null") {
                         var expDate = new Date(mainPage.pcExpireAt)
                         var now = new Date()
@@ -3038,7 +3036,32 @@ Rectangle {
                             }
                         }
                     }
-                    
+
+                    // ⭐ §56.29b 不支持遮罩：主版(PC-SRS)连到「外接 OTG」设备 → 画面完全遮死，只提示「不支持」
+                    Rectangle {
+                        id: unsupportedOtgOverlay
+                        anchors.fill: videoContainer
+                        color: "#000000"
+                        z: 10  // 盖住视频/睡眠遮罩/FPS/LIVE 等所有画面层
+                        visible: CameraCapsStore.isOtg
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "不支持"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 26
+                            font.bold: true
+                            color: "#FFFFFF"
+                        }
+
+                        // 吞掉点击/滚轮，画面区不可缩放拖动
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onWheel: (wheel) => { wheel.accepted = true }
+                        }
+                    }
+
 
                     Rectangle {
                         anchors.top: parent.top
@@ -3740,7 +3763,7 @@ Rectangle {
                                 //   - pcActivationLevel < 2 不允许局部放大 (与"慢放跟随实时流缩放"老约束一致)
                                 if (mainPage.sKeyPressed) {
                                     if (mainPage.pcActivationLevel < 2) {
-                                        console.log("🔒 慢放局部放大需要至尊版")
+                                        console.log("🔒 慢放局部放大需要AI全能版")
                                         return
                                     }
                                     var oldZoom = mainPage.slowmoZoom
@@ -4905,7 +4928,7 @@ Rectangle {
                 closeFullscreenViewer()
                 console.log("🔑 关闭放大查看")
             } else if (mainPage.pcActivationLevel < 2) {
-                console.log("🔒 全屏放大需要至尊版")
+                console.log("🔒 全屏放大需要AI全能版")
             } else if (captureManager.currentItemIndex >= 0 && captureManager.currentItemIndex < captureManager.count) {
                 fullscreenViewerMode = appSettings.halfScreenViewMode ? 1 : 0
                 console.log("🔑 打开抓拍放大查看, itemIndex:", captureManager.currentItemIndex, "模式:", appSettings.halfScreenViewMode ? "半屏" : "全屏")
@@ -5022,62 +5045,12 @@ Rectangle {
             if (CameraCapsStore.isOtg) {
                 if (iosCameraSettingsPopup.visible)
                     iosCameraSettingsPopup.close()
-                // ⭐ §56.29 主版连到 OTG 设备 → 拉取 OTG 专版下载地址，弹框提示下载（本次连接只提示一次）
-                if (!mainPage.otgClientPromptShown) {
-                    mainPage.otgClientPromptShown = true
-                    HttpClient.fetchOtgClientDownloadUrl()
-                }
-            } else {
-                // 断开/切设备/退出 → 复位，下次连 OTG 再提示一次
-                mainPage.otgClientPromptShown = false
             }
         }
     }
-
-    // ⭐ §56.29 OTG 专版下载地址返回 → 打开提示弹框
-    Connections {
-        target: HttpClient
-        function onOtgClientDownloadUrlReceived(url) {
-            if (!CameraCapsStore.isOtg) return   // 地址回来时已经切走了就别弹
-            otgClientPromptDialog.downloadUrl = (url && url.length > 0) ? url : ""
-            otgClientPromptDialog.open()
-        }
-    }
-
-    // ⭐ §56.29 不支持提示弹框：主版(PC-SRS)连到「外接 OTG 摄像头」设备时——本版本不支持，引导下载 OTG 专版
-    Dialog {
-        id: otgClientPromptDialog
-        property string downloadUrl: ""
-        title: "此设备不受支持"
-        modal: true
-        anchors.centerIn: parent
-        width: 440
-        closePolicy: Popup.CloseOnEscape
-
-        Label {
-            width: parent.width
-            wrapMode: Text.WordWrap
-            text: "检测到当前设备为「外接 OTG 摄像头」，本版本不支持观看此类设备。\n\n" +
-                  "请下载安装「看家Otg版本」专用客户端观看（两个版本可同机并存、互不影响）。"
-        }
-
-        footer: DialogButtonBox {
-            Button {
-                text: "知道了"
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-            Button {
-                text: "下载 OTG 版"
-                enabled: otgClientPromptDialog.downloadUrl.length > 0
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            }
-        }
-
-        onAccepted: {
-            if (downloadUrl.length > 0)
-                Qt.openUrlExternally(downloadUrl)
-        }
-    }
+    // ⭐ §56.29b：主版不看「外接 OTG」设备——在信令阶段（CONFIG_STATE.cameraMode）就拦截，
+    //   压根不发起视频连接（见 CONFIG_STATE 推流状态处理的 isOtg 分支），画面区只显示「不支持」
+    //   （unsupportedOtgOverlay）。原下载引导弹框已移除（用户拍板：只提示「不支持」三个字）。
 
     // L键：打开/关闭 iOS 采集颜色调节（冷暖/绿紫/RGB/黑/白 → 硬件白平衡）
     Shortcut {
@@ -7952,7 +7925,7 @@ Rectangle {
                 ShortcutItem { key: "F"; desc: "全屏切换" }
                 ShortcutItem { 
                     key: ShortcutStore.gridFullscreenKey
-                    desc: "抓拍全屏(仅至尊版)" 
+                    desc: "抓拍全屏(仅AI全能版)" 
                 }
                 ShortcutItem { key: "G"; desc: "实时窗口切换" }
                 ShortcutItem { key: "H"; desc: "慢放窗口切换" }
@@ -8006,7 +7979,7 @@ Rectangle {
                 
                 Text {
                     Layout.fillWidth: true
-                    text: "• 豪华版(pc=1)：不支持手动打开抓拍全屏，不支持自动触发\n• 至尊版(pc=2)：支持手动打开/关闭抓拍全屏，支持自动触发（当截图个数达到行×列时）"
+                    text: "• 豪华版(pc=1)：不支持手动打开抓拍全屏，不支持自动触发\n• AI全能版(pc=2)：支持手动打开/关闭抓拍全屏，支持自动触发（当截图个数达到行×列时）"
                     font.family: "PingFang HK"
                     font.pixelSize: 12
                     color: "#666666"
@@ -8128,7 +8101,8 @@ Rectangle {
                 // 标题（含当前版本）
                 Text {
                     text: {
-                        var name = mainPage.pcLevelName || (mainPage.pcActivationLevel >= 2 ? "至尊版" : "豪华版")
+                        // §57.1：同上，忽略后端 pcLevelName
+                        var name = mainPage.pcActivationLevel >= 2 ? "AI全能版" : "豪华版"
                         return "版本功能对比（当前：" + name + "）"
                     }
                     font.family: "PingFang HK"
@@ -8166,7 +8140,7 @@ Rectangle {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "至尊版"
+                        text: "AI全能版"
                         font.family: "PingFang HK"
                         font.pixelSize: 13
                         font.weight: Font.Bold
@@ -8345,7 +8319,7 @@ Rectangle {
     // ⭐ 获取帧率(fps)上限 - 全部从登录接口 levelFps 动态获取
     // levelFps[0]=试用, [1]=高清, [2]=超清, [3]=超高清, [4]=超高帧
     // 最终上限 = min(levelFps[等级], PC端限制)
-    // PC端等级额外限制：至尊版(2)不限制，豪华版(1)及以下最大120
+    // PC端等级额外限制：AI全能版(2)不限制，豪华版(1)及以下最大120
     function getMaxFpsForQuality(qualityType) {
         // ⭐ 从 levelFps 数组读取 iOS 会员等级的帧率上限
         var level = mainPage.memberActivationLevel
@@ -8364,7 +8338,7 @@ Rectangle {
         
         console.log("📊 getMaxFpsForQuality: type=" + qualityType + " level=" + level + " levelFps=" + JSON.stringify(fps) + " iosMaxFps=" + iosMaxFps)
         
-        // ⭐ PC端等级额外限制：豪华版(1)及以下最大120，至尊版(2)不限制
+        // ⭐ PC端等级额外限制：豪华版(1)及以下最大120，AI全能版(2)不限制
         var pcMaxFps = (mainPage.pcActivationLevel >= 2) ? 999 : 120
 
         var result = Math.min(iosMaxFps, pcMaxFps)
@@ -8393,7 +8367,7 @@ Rectangle {
     // ⭐ 获取超级帧率上限 - 全部从登录接口 levelExposureFps 动态获取
     // levelExposureFps[0]=试用, [1]=高清, [2]=超清, [3]=超高清, [4]=超高帧
     // 最终上限 = min(levelExposureFps[等级], PC端限制)
-    // PC端等级额外限制：豪华版(1)最大240，至尊版(2)不限制
+    // PC端等级额外限制：豪华版(1)最大240，AI全能版(2)不限制
     function getMaxFlickerForQuality(qualityType) {
         // ⭐ 从 levelExposureFps 数组读取 iOS 会员等级的超级帧率上限
         var level = mainPage.memberActivationLevel
@@ -8412,7 +8386,7 @@ Rectangle {
         
         console.log("📊 getMaxFlickerForQuality: type=" + qualityType + " level=" + level + " levelExposureFps=" + JSON.stringify(efps) + " iosMaxFlicker=" + iosMaxFlicker)
         
-        // ⭐ PC端等级额外限制：豪华版(1)及以下最大240，至尊版(2)不限制
+        // ⭐ PC端等级额外限制：豪华版(1)及以下最大240，AI全能版(2)不限制
         //   需求#10（2026-07-31）：999 → 1000（后台曝光FPS上限已放宽到 1000，999 会把 1000 压回去）
         var pcMaxFlicker = (mainPage.pcActivationLevel >= 2) ? 1000 : 240
         
@@ -9519,7 +9493,8 @@ Rectangle {
             }
             
             // 解析连接类型: 0 或未传 = SRS 模式, 1 = P2P 直连模式
-            var connectstype = state.connectstype !== undefined ? state.connectstype : 0
+            // ⭐ aihj 版拍板：只要 SRS + H264，无视设备端上报，链路一律 SRS（iOS 端 srsOnlyBuild 同步写死）。
+            var connectstype = 0
             var modeChanged = (connectstype !== mainPage.connectMode)
             if (modeChanged) {
                 console.log("🔄 连接模式变更: " + mainPage.connectMode + " → " + connectstype)
@@ -9530,7 +9505,8 @@ Rectangle {
 
             // ⭐ H265：设备上报的实际编码（"h264"/"h265"，各端登录页选项决定）。
             //   第四十九章：P2P/SRS/SRT 都可 H265，PC 按上报值预建解码管线（H265 逻辑在 h265support.h/.cpp）。
-            var videoCodec = state.videoCodec || "h264"
+            // ⭐ aihj 版拍板：编码一律 H264，无视设备端上报（iOS 端也已写死只推 H264）。
+            var videoCodec = "h264"
             var codecChanged = (videoCodec !== mainPage.videoCodec)
             if (codecChanged) {
                 console.log("🎞️ 视频编码变更: " + mainPage.videoCodec + " → " + videoCodec + " (connectstype=" + connectstype + ")")
@@ -9553,7 +9529,19 @@ Rectangle {
             //   故不再预热 SRT 专用解码/编码（warmupSRT 已无意义，移除避免无谓冷启动开销）。
             
             // ⭐ 推流状态处理
-            if (publishStatus === 1 && streamKey && streamKey.length > 0) {
+            // ⭐ §56.29b 设备类型不匹配 → **连接前拦截**：设备类型来自本条 CONFIG_STATE 信令的 cameraMode
+            //   （上面 CameraCapsStore.onConfigState 已更新 isOtg），拉流决策前就已知 →
+            //   外接 OTG 设备一律不发起视频连接（SRS/P2P 都不起播）；若播放中设备切到 OTG 相机则立即停流清屏。
+            //   画面区由 unsupportedOtgOverlay 只显示「不支持」。
+            if (CameraCapsStore.isOtg) {
+                if (publishState === 1 || isConnecting || videoSurfaceDirty) {
+                    console.log("⛔ §56.29b 设备为外接 OTG，本版本不支持 → 不拉流/停流")
+                    stopAll()
+                    clearVideoSurface()
+                }
+                publishState = 0
+                isConnecting = false
+            } else if (publishStatus === 1 && streamKey && streamKey.length > 0) {
                 // ⭐⭐ §53.8（2026-07-28 服务器日志实锤）：**流名变化必须重连**。
                 //   以前这里只更新 currentStream，却只有 modeChanged/codecChanged 才重连 →
                 //   设备重新推流（streamKey 带时间戳、每次都是新的）时，PC 仍在拉**上一条已经
@@ -10733,7 +10721,7 @@ Rectangle {
                 if (mainPage.sKeyPressed) {
                     // ⭐ PC等级1(豪华版)：禁用全屏查看局部放大
                     if (mainPage.pcActivationLevel < 2) {
-                        console.log("🔒 全屏局部放大需要至尊版")
+                        console.log("🔒 全屏局部放大需要AI全能版")
                         return
                     }
                     // ⭐ S + 滚轮：以鼠标位置为中心缩放
