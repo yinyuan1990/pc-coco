@@ -6175,7 +6175,9 @@ Rectangle {
                     }
                     
                     Text {
-                        text: iosCameraSettingsPopup.fpsValue
+                        // ⭐ 2026-08-15 显示口径×4→×2：内部 fpsValue/下发协议仍是×4口径
+                        //   （iOS 端照旧÷4 得真实帧率，链路不动），仅显示时÷2 → 拖满显示 120
+                        text: Math.round(iosCameraSettingsPopup.fpsValue / 2)
                         font.family: "PingFang HK"
                         font.pixelSize: 16
                         color: "#ECEFF4"
