@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSurfaceFormat>
 #include <QQuickStyle>
 #include <QIcon>
 #include <QFile>
@@ -557,6 +558,16 @@ int main(int argc, char *argv[])
     QtWebEngineQuick::initialize();
     earlyLog("[WebEngine] QtWebEngineQuick::initialize() done");
 #endif
+
+    // ⭐ 2026-08-16 修「主界面圆角四角白边（部分机型）」：主界面 25px 圆角靠
+    //   透明窗口底露出桌面实现，但部分机型/显卡默认渲染表面不带 Alpha 通道，
+    //   "transparent" 退化成白色 → 四角白边。这里显式申请 8 位 Alpha 通道，
+    //   必须在 QGuiApplication/任何窗口创建之前设置。
+    {
+        QSurfaceFormat fmt = QSurfaceFormat::defaultFormat();
+        fmt.setAlphaBufferSize(8);
+        QSurfaceFormat::setDefaultFormat(fmt);
+    }
 
     QGuiApplication app(argc, argv);
     
