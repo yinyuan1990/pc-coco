@@ -3181,10 +3181,10 @@ Rectangle {
                                    ? parent.height : parent.width
                             height: (mainPage.videoRotation === 90 || mainPage.videoRotation === 270) 
                                     ? parent.width : parent.height
-                            // ⭐ 2026-08-15 修「旋转画面变形」：原 Stretch 不保宽高比，
-                            //   90°/270° 时竖幅画面被强行拉满横向面板必定变形，
-                            //   0°/180° 在面板比例≠视频比例时也有轻度拉伸。改保比例留边。
-                            fillMode: VideoOutput.PreserveAspectFit
+                            // ⭐ 2026-08-15 恢复 Stretch 铺满（保比例留边方案被否）：
+                            //   显示拉伸只影响预览观感，截图走 H.264 原始帧文件解码保存，
+                            //   与显示 fillMode 无关，截图永远不变形。
+                            fillMode: VideoOutput.Stretch
                             
                             // 设置变换原点为中心
                             x: parent.width / 2 - width / 2 + mainPage.videoOffsetX
@@ -4093,8 +4093,8 @@ Rectangle {
                                    ? parent.height : parent.width
                             height: (mainPage.videoRotation === 90 || mainPage.videoRotation === 270) 
                                     ? parent.width : parent.height
-                            // ⭐ 2026-08-15 修「旋转画面变形」：同实时流，Stretch→保比例（理由见实时流处注释）
-                            fillMode: VideoOutput.PreserveAspectFit
+                            // ⭐ 2026-08-15 恢复 Stretch 铺满，同实时流（截图走原始帧不受显示拉伸影响）
+                            fillMode: VideoOutput.Stretch
                             visible: slowMotionPlayer.hasContent
                             
                             // ⭐ 满放跟随实时流 videoZoom, 通过 slowmoZoom/slowmoOffsetX/Y 同步
