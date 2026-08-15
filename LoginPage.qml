@@ -489,16 +489,32 @@ Rectangle {
             // ⭐ 播放内核选择入口已隐藏：固定 GStreamer（见 Component.onCompleted）
             Item { Layout.preferredHeight: 14 }
 
+            // ⭐ 2026-08-15 需求：勾选按钮放到右边（整行右对齐），颜色改绿色系、文字提亮
             Row {
                 spacing: 8
+                Layout.alignment: Qt.AlignRight
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "记住密码"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 14
+                    color: "#E0E0E0"
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: loginPage.rememberPassword = !loginPage.rememberPassword
+                    }
+                }
 
                 Rectangle {
                     width: 18
                     height: 18
                     radius: 4
                     anchors.verticalCenter: parent.verticalCenter
-                    color: loginPage.rememberPassword ? "#607AFB" : "transparent"
-                    border.color: loginPage.rememberPassword ? "#607AFB" : "#808080"
+                    color: loginPage.rememberPassword ? "#22C55E" : "transparent"
+                    border.color: loginPage.rememberPassword ? "#22C55E" : "#808080"
                     border.width: 1
 
                     Text {
@@ -513,20 +529,6 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent
                         anchors.margins: -4
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: loginPage.rememberPassword = !loginPage.rememberPassword
-                    }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "记住密码"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#B0B0B0"
-
-                    MouseArea {
-                        anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: loginPage.rememberPassword = !loginPage.rememberPassword
                     }
