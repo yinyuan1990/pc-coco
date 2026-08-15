@@ -1097,8 +1097,11 @@ Rectangle {
                 }
                 
                 // 设备绑定（⭐ 2026-08-14 对齐 java gstream：sbbd 图标 +「绑定」）
+                // ⭐ 2026-08-16 改动2：顶部「绑定」入口去掉，扫码绑定挪到账号管理弹框
+                //   「绑定的设备」标题右侧；手动绑定入口一并移除（只保留扫码绑定）。
                 Rectangle {
                     id: deviceBindText
+                    visible: false
                     width: bindBtnRow.width + 24
                     height: 32
                     radius: 8
@@ -8841,6 +8844,12 @@ Rectangle {
             showToast("绑定成功")
             reLoginAndInitDevice(newDeviceId, iosUsername)
         }
+
+        // ⭐ 2026-08-16 改动2：扫码绑定入口在账号管理弹框内，绑定成功后弹框还开着
+        //   的话重拉一次在线状态（deviceMap 随之重建），让新设备立即出现在列表里。
+        if (switchAccountDialog.visible) {
+            refreshOnlineStatus()
+        }
     }
     
     // 首次绑定后重新登录
@@ -12172,21 +12181,66 @@ Rectangle {
                     }
                 }
                 
-                // 绑定设备列表标题
-                Text {
-                    text: "绑定的设备"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    font.bold: true
-                    color: "#FAFAFA"
-                    visible: switchAccountDialog.currentDevices.length > 0
+                // 绑定设备列表标题 + 扫码绑定入口
+                // ⭐ 2026-08-16 改动2：顶部菜单栏「绑定」入口移除，扫码绑定放到这里
+                //   （绑定列表右上角）。没有绑定设备时也显示，方便首次绑定。
+                Item {
+                    width: parent.width
+                    height: 28
+
+                    Text {
+                        text: "绑定的设备"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: "#FAFAFA"
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: scanBindBtnRow.width + 20
+                        height: 28
+                        radius: 6
+                        color: scanBindBtnArea.containsMouse ? "#4f6af0" : "#607AFB"
+
+                        Row {
+                            id: scanBindBtnRow
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            Image {
+                                source: "images/sbbd.png"
+                                width: 14; height: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                smooth: true
+                            }
+                            Text {
+                                text: "扫码绑定"
+                                font.family: "PingFang HK"
+                                font.pixelSize: 12
+                                color: "#FFFFFF"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: scanBindBtnArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: showScanBindPopup()
+                        }
+                    }
                 }
                 
                 // 设备列表（直接显示，不需要展开）
                 ListView {
                     id: deviceListView
                     width: parent.width
-                    height: parent.height - 120
+                    height: parent.height - 132
                     clip: true
                     model: switchAccountDialog.currentDevices
                     spacing: 8
