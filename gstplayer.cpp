@@ -5598,6 +5598,17 @@ void GstPlayer::onRenderTick()
             } else {
                 m_arrivalRateEma = qMax(5.0, m_arrivalRateEma * 0.5);
             }
+
+            // ⭐ §65（2026-08-15）「杀手机进程后画面留最后一帧」修复：
+            //   m_receiveFps 原本只在收帧回调里更新，断流后冻结在最后的非零值；
+            //   而 QML §53.10 的「心跳超时清屏」要求 currentPlayingFps()===0 才敢清
+            //   （防止 P2P 下 STOMP 抖动误清正常画面）→ fps 永远非零 = 永远不清屏。
+            //   设备被杀进程时 EMA 衰减必进本低帧率分支且提前 return（连 15s 无帧看门狗
+            //   都跳过），所以这里必须把"上一秒 0 帧"如实反映到 receiveFps。
+            if (m_lastSecondFps == 0 && m_receiveFps.load() != 0) {
+                m_receiveFps = 0;
+                emit receiveFpsChanged();
+            }
             
             qDebug().noquote() << QString("🔴 v9.3低帧率直通 | 收=%1fps EMA=%2fps | 跳过缓冲直接渲染")
                 .arg((int)m_lastSecondFps).arg((int)m_arrivalRateEma);
@@ -5625,6 +5636,13 @@ void GstPlayer::onRenderTick()
         m_lastSecondFps = m_currentSecondFrames;
         m_currentSecondFrames = 0;  // 重置计数
         m_lastQualityCheckMs = now;
+
+        // ⭐ §65：无帧一秒即把 receiveFps 归零（与低帧率直通分支同款，理由见那边注释）——
+        //   QML 才能看见"真没画面"，§53.10 心跳超时清屏/§54 对账才有正确事实源。
+        if (m_lastSecondFps == 0 && m_receiveFps.load() != 0) {
+            m_receiveFps = 0;
+            emit receiveFpsChanged();
+        }
         
         // 🔥🔥🔥 v12.1 计算损坏帧比例（网络质量核心指标）
         m_lastSecondCorruptFrames = m_corruptFrameCount.exchange(0);
