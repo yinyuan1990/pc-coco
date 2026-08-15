@@ -3637,7 +3637,8 @@ Rectangle {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "对焦 " + Math.round(iosCameraSettingsPopup.focusValue * 100) + "%"
+                        // 显示真实对焦值（0.00~1.00），不用百分比
+                        text: "对焦 " + iosCameraSettingsPopup.focusValue.toFixed(2)
                         font.pixelSize: 12
                         font.family: "PingFang HK"
                         font.bold: true
