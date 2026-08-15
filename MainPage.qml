@@ -360,12 +360,15 @@ Rectangle {
     // FPS 显示（来自 GstPlayer 统计的实际接收帧率；自带摄像头 ×4，OTG 真实值）
     //   ⭐ 网页内核作主播放器时改用 webview 上报的 kernelViewerFps（GStreamer receiveFps 此时恒为 0）。
     //   ⭐ 2026-08-02：网页内核在 html 里统一 ×4（对齐 GStreamer 口径），OTG 源在这里除回去显示真实值。
+    //   ⭐ 2026-08-15 需求：显示口径从 ×4 降为 ×2——底层 receiveFps/kernelViewerFps 的 ×4
+    //     口径不动（网络质量检测等内部逻辑依赖），只在这里显示时除以 2；OTG 仍显示真实值。
     Item {
         id: fpsRow
         property int displayFps: mainPage.useWebEngineKernel
                                  ? (CameraCapsStore.isOtg ? Math.round(mainPage.kernelViewerFps / 4)
-                                                          : mainPage.kernelViewerFps)
-                                 : gstPlayer.receiveFps
+                                                          : Math.round(mainPage.kernelViewerFps / 2))
+                                 : (CameraCapsStore.isOtg ? gstPlayer.receiveFps
+                                                          : Math.round(gstPlayer.receiveFps / 2))
     }
 
     // ⭐ 网页内核作主播放器时 webview 上报的接收帧率（GStreamer receiveFps 此时恒为 0）。
@@ -2206,9 +2209,12 @@ Rectangle {
 
             Rectangle { width: 1; height: 10; color: "#4A4A4A"; anchors.verticalCenter: parent.verticalCenter }
 
-            // 码率
+            // 码率（⭐ 2026-08-15 需求：不再×2；iOS 传来的值除以2显示，Android 显示原值）
             Text {
-                text: (mainPage.deviceKbps > 0 ? (mainPage.deviceKbps * 2) : 0) + "kb/s"  // ⭐ x2 显示
+                text: (mainPage.deviceKbps > 0
+                       ? (HttpClient.currentIsAndroid() ? mainPage.deviceKbps
+                                                        : Math.round(mainPage.deviceKbps / 2))
+                       : 0) + "kb/s"
                 font.family: "PingFang HK"
                 font.pixelSize: 12
                 color: "#CCCCCC"
