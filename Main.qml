@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import Aifs.Components
 
 // 应用入口：根据登录状态加载不同页面
@@ -394,6 +395,20 @@ ApplicationWindow {
         //   冻住数百毫秒~数秒（低配机更久），登录窗口死冻就是「登录卡5秒」主因之一。
         //   异步模式下错误同样经 status===Loader.Error 上报，不影响下面的错误捕获。
         asynchronous: true
+
+        // ⭐ 2026-08-15 需求：主界面四角 25px 圆弧。窗口本身无边框+透明底，
+        //   顶栏/底栏是方角矩形会把角画满，单给 MainPage 根加 radius 不够，
+        //   这里用 OpacityMask 对整个主页面内容裁圆角。最大化/全屏时贴屏显示，关掉圆角省一层离屏渲染。
+        layer.enabled: isLoggedIn
+                       && mainWindow.visibility !== Window.Maximized
+                       && mainWindow.visibility !== Window.FullScreen
+        layer.effect: OpacityMask {
+            maskSource: Item {
+                width: mainPageLoader.width
+                height: mainPageLoader.height
+                Rectangle { anchors.fill: parent; radius: 25 }
+            }
+        }
         
         onActiveChanged: {
             console.log("Main.qml: mainPageLoader.active 变化:", active)
