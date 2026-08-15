@@ -198,7 +198,7 @@ Rectangle {
         property bool halfScreenViewMode: false  // 放大查看模式：false=全屏，true=半屏（覆盖截图view）
         // ⭐ 播放内核选择（2026-06-24）：与 LoginPage 的 kernelSettings 同 app 域(Acard/Phoenix)、同名 key，
         //   登录页写入、这里读取，天然同步。默认 "gstreamer"。
-        property string playbackKernel: "gstreamer"  // "gstreamer" | "webengine"
+        property string playbackKernel: "webengine"  // "gstreamer" | "webengine"（2026-08-16 默认改网页内核）
         // ⭐ 2026-07-14：iOS 低功率/高功率采集开关（相机设定面板"还原"按钮旁）。
         //   仅影响 iOS 端"采集"帧率（低功率=钉30fps），不改变本 PC 端既有的"推送fps下发"逻辑；
         //   iOS 收到 ptype=lowPowerCapture 后自行判断落地。默认 false=高功率（与现网行为一致）。

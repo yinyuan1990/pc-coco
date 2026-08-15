@@ -26,7 +26,7 @@ Rectangle {
     //   清掉历史上可能存过的 webengine 选择）。MainPage 仍读取此值。
     Settings {
         id: kernelSettings
-        property string playbackKernel: "gstreamer"  // "gstreamer" | "webengine"
+        property string playbackKernel: "webengine"  // "gstreamer" | "webengine"（2026-08-16 默认改网页内核）
     }
 
     // 当前视图：login / selectDevice / register
@@ -1393,8 +1393,8 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        // ⭐ 播放内核入口已隐藏，固定 GStreamer（覆盖历史保存的 webengine 选择）
-        kernelSettings.playbackKernel = "gstreamer"
+        // ⭐ 2026-08-16 需求：播放模式改为网页内核（覆盖历史保存的 gstreamer 选择）
+        kernelSettings.playbackKernel = "webengine"
         loadSavedAccount()
     }
 }
