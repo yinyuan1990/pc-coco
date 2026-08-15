@@ -11989,10 +11989,10 @@ Rectangle {
         property bool isLoading: false
         property var currentDevices: deviceMap[currentUsername] || []
 
-        // ⭐ 2026-08-15 需求：去掉标题栏「设备号」显示，圆角放大到 50
+        // ⭐ 2026-08-15 需求：去掉标题栏「设备号」显示，圆角 25（50 太大改小）
         background: Rectangle {
             color: "#1F1F1F"
-            radius: 50
+            radius: 25
             border.color: "#3A3A3A"
             border.width: 1
         }
@@ -12002,7 +12002,7 @@ Rectangle {
 
             Row {
                 anchors.left: parent.left
-                anchors.leftMargin: 36
+                anchors.leftMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
@@ -12046,11 +12046,11 @@ Rectangle {
                 }
             }
             
-            // 关闭按钮（圆角50后往里挪，避免压到弧线）
+            // 关闭按钮（圆角后稍往里挪，避免压到弧线）
             Rectangle {
                 id: switchCloseBtn
                 anchors.right: parent.right
-                anchors.rightMargin: 28
+                anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
                 width: 28
                 height: 28
