@@ -468,7 +468,7 @@ void NaluDiskWriter::run()
 
 CaptureManager::CaptureManager(QObject *parent)
     : QObject(parent)
-    , m_settings(new QSettings("Acard", "Aifs", this))
+    , m_settings(new QSettings("Acard", "HuanJing", this))
 {
     qDebug() << "📦 CaptureManager 构造开始...";
     loadSettings();

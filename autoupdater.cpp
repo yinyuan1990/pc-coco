@@ -26,7 +26,7 @@
 // §43 版本号单一来源：CMakeLists.txt 顶部 PHOENIX_APP_VERSION 经编译宏注入。
 // 兜底值仅在极端情况（未走 CMake 配置）下生效。
 #ifndef PHOENIX_VERSION_STR
-#define PHOENIX_VERSION_STR "8.3.7"
+#define PHOENIX_VERSION_STR "1.0.0"
 #endif
 
 static QString qlgxPath()
@@ -139,7 +139,13 @@ void AutoUpdater::checkForUpdates()
         }
         
         QByteArray data = reply->readAll();
-        qlgxLog(QString("checkForUpdates: 收到响应 %1 bytes").arg(data.size()));
+        // ⭐ 2026-08-14 排查 CDN 缓存不一致：记录 HTTP 状态码 + 最终 URL + 原始响应体，
+        //   下次再弹更新框时 qlgx.txt 能直接证明服务器当时返回了什么
+        int httpCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        qlgxLog(QString("checkForUpdates: 收到响应 %1 bytes, HTTP=%2, finalUrl=%3")
+                .arg(data.size()).arg(httpCode).arg(reply->url().toString()));
+        qlgxLog(QString("checkForUpdates: 原始响应体=%1")
+                .arg(QString::fromUtf8(data.left(400)).replace('\n', ' ')));
         reply->deleteLater();
         
         parseVersionInfo(data);
@@ -253,11 +259,11 @@ void AutoUpdater::downloadAndInstall()
     
     if (m_updateMode == 0 && !m_downloadExeUrl.isEmpty()) {
         actualDownloadUrl = m_downloadExeUrl;
-        fileName = tempDir + "/Phoenix_update.exe";
+        fileName = tempDir + "/HuanJing_update.exe";
         qlgxLog("downloadAndInstall: 模式0, 直接下载 exe, url=" + actualDownloadUrl);
     } else {
         actualDownloadUrl = m_downloadUrl;
-        fileName = tempDir + "/Phoenix_update.zip";
+        fileName = tempDir + "/HuanJing_update.zip";
         qlgxLog(QString("downloadAndInstall: 模式%1, 下载完整包 zip, url=%2")
                 .arg(m_updateMode).arg(actualDownloadUrl));
     }
@@ -340,12 +346,12 @@ void AutoUpdater::downloadAndInstall()
         QString appDir      = QCoreApplication::applicationDirPath();
         QString actualExeName = QFileInfo(QCoreApplication::applicationFilePath()).fileName();
         QString tempDir     = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-        QString zipFile     = tempDir + "/Phoenix_update.zip";
-        QString exeFile     = tempDir + "/Phoenix_update.exe";
-        QString batFile     = tempDir + "/update_phoenix.bat";
+        QString zipFile     = tempDir + "/HuanJing_update.zip";
+        QString exeFile     = tempDir + "/HuanJing_update.exe";
+        QString batFile     = tempDir + "/update_huanjing.bat";
 
         bool directExeDownload = (m_updateMode == 0 && !m_downloadExeUrl.isEmpty());
-        bool exeRenamed        = (actualExeName.compare("Phoenix.exe", Qt::CaseInsensitive) != 0);
+        bool exeRenamed        = (actualExeName.compare("HuanJing.exe", Qt::CaseInsensitive) != 0);
 
         QString nAppDir  = QDir::toNativeSeparators(appDir);
         QString nTempDir = QDir::toNativeSeparators(tempDir);
@@ -366,27 +372,27 @@ void AutoUpdater::downloadAndInstall()
             out << "@echo off\n";
             // 不切代码页 — bat 用 GBK 写入，与 cmd 默认代码页一致，中文路径才能正确解析
             out << "echo.\n";
-            out << "echo  Phoenix Updater\n";
+            out << "echo  HuanJing Updater\n";
             out << "echo  =====================================\n";
             out << "echo.\n";
 
             // 解压明细日志（脚本在程序退出后运行，必须自己写文件）
             out << "set \"ULOG=" << nAppDir << "\\update_extract.log\"\n";
-            out << "echo ==== Phoenix update %date% %time% ==== > \"%ULOG%\"\n";
+            out << "echo ==== HuanJing update %date% %time% ==== > \"%ULOG%\"\n";
             out << "echo  解压明细将写入: %ULOG%\n";
 
-            // 强制结束 Phoenix 进程并等待释放文件锁
+            // 强制结束 HuanJing 进程并等待释放文件锁
             out << "echo  [1/3] 等待旧程序退出...\n";
-            out << "taskkill /F /IM Phoenix.exe /T >nul 2>&1\n";
+            out << "taskkill /F /IM HuanJing.exe /T >nul 2>&1\n";
             out << "taskkill /F /IM " << actualExeName << " /T >nul 2>&1\n";
             out << "timeout /t 2 /nobreak >nul\n";
             out << "echo.\n";
 
             // 防呆：解压若被多套了一层目录(zip 带 release/ 之类前缀，文件落到 appDir\子目录\)，
-            // 把那层目录里的内容挪回根目录覆盖。正常解压时无子目录含 Phoenix.exe，自动跳过。
+            // 把那层目录里的内容挪回根目录覆盖。正常解压时无子目录含 HuanJing.exe，自动跳过。
             auto writeUnnestFix = [&]() {
                 out << "for /d %%D in (\"" << nAppDir << "\\*\") do (\n";
-                out << "    if exist \"%%D\\Phoenix.exe\" (\n";
+                out << "    if exist \"%%D\\HuanJing.exe\" (\n";
                 out << "        echo  检测到多层目录，正在修正: %%D\n";
                 out << "        echo --- fix nested dir: %%D --- >> \"%ULOG%\"\n";
                 out << "        xcopy \"%%D\\*\" \"" << nAppDir << "\\\" /E /H /Y >> \"%ULOG%\" 2>&1\n";
@@ -416,8 +422,8 @@ void AutoUpdater::downloadAndInstall()
                 out << "del \"" << nZipFile << "\" >nul 2>&1\n";
                 writeUnnestFix();
                 if (exeRenamed) {
-                    out << "if exist \"" << nAppDir << "\\Phoenix.exe\" "
-                        << "ren \"" << nAppDir << "\\Phoenix.exe\" \"" << actualExeName << "\"\n";
+                    out << "if exist \"" << nAppDir << "\\HuanJing.exe\" "
+                        << "ren \"" << nAppDir << "\\HuanJing.exe\" \"" << actualExeName << "\"\n";
                 }
             } else {
                 // 模式1 全量更新：直接解压到 appDir
@@ -439,8 +445,8 @@ void AutoUpdater::downloadAndInstall()
                 out << "del \"" << nZipFile << "\" >nul 2>&1\n";
                 writeUnnestFix();
                 if (exeRenamed) {
-                    out << "if exist \"" << nAppDir << "\\Phoenix.exe\" "
-                        << "ren \"" << nAppDir << "\\Phoenix.exe\" \"" << actualExeName << "\"\n";
+                    out << "if exist \"" << nAppDir << "\\HuanJing.exe\" "
+                        << "ren \"" << nAppDir << "\\HuanJing.exe\" \"" << actualExeName << "\"\n";
                 }
             }
 
@@ -764,8 +770,8 @@ void AutoUpdater::finalizeManifestUpdate()
     QString appDir        = QCoreApplication::applicationDirPath();
     QString actualExeName = QFileInfo(QCoreApplication::applicationFilePath()).fileName();
     QString tempDir       = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    QString batFile       = tempDir + "/update_phoenix.bat";
-    bool exeRenamed       = (actualExeName.compare("Phoenix.exe", Qt::CaseInsensitive) != 0);
+    QString batFile       = tempDir + "/update_huanjing.bat";
+    bool exeRenamed       = (actualExeName.compare("HuanJing.exe", Qt::CaseInsensitive) != 0);
 
     QString nAppDir   = QDir::toNativeSeparators(appDir);
     QString nStageDir = QDir::toNativeSeparators(m_stageDir);
@@ -791,17 +797,17 @@ void AutoUpdater::finalizeManifestUpdate()
 
     out << "@echo off\n";
     out << "echo.\n";
-    out << "echo  Phoenix Updater (manifest)\n";
+    out << "echo  HuanJing Updater (manifest)\n";
     out << "echo  =====================================\n";
     out << "set \"ULOG=" << nAppDir << "\\update_extract.log\"\n";
-    out << "echo ==== Phoenix manifest update to " << m_manifestVersion
+    out << "echo ==== HuanJing manifest update to " << m_manifestVersion
         << " %date% %time% ==== > \"%ULOG%\"\n";
 
     // [1/3] 轮询等待进程真正退出（Phoenix 析构有多处 waitForDone(3000)，盲等 2s 是旧版失败主因）
     out << "echo  [1/3] 等待旧程序退出...\n";
     out << "set /a WAITED=0\n";
     out << ":waitloop\n";
-    out << "tasklist /FI \"IMAGENAME eq Phoenix.exe\" 2>nul | find /i \"Phoenix.exe\" >nul\n";
+    out << "tasklist /FI \"IMAGENAME eq HuanJing.exe\" 2>nul | find /i \"HuanJing.exe\" >nul\n";
     out << "if not errorlevel 1 goto stillrunning\n";
     if (exeRenamed) {
         out << "tasklist /FI \"IMAGENAME eq " << actualExeName << "\" 2>nul | find /i \""
@@ -816,7 +822,7 @@ void AutoUpdater::finalizeManifestUpdate()
     out << "goto waitloop\n";
     out << ":killhard\n";
     out << "echo  等待超时, 强制结束进程 >> \"%ULOG%\"\n";
-    out << "taskkill /F /IM Phoenix.exe /T >nul 2>&1\n";
+    out << "taskkill /F /IM HuanJing.exe /T >nul 2>&1\n";
     if (exeRenamed)
         out << "taskkill /F /IM " << actualExeName << " /T >nul 2>&1\n";
     out << "timeout /t 2 /nobreak >nul\n";
@@ -831,9 +837,9 @@ void AutoUpdater::finalizeManifestUpdate()
     out << "if errorlevel 8 goto copyfail\n";
     out << "rd /s /q \"" << nStageDir << "\" >nul 2>&1\n";
     if (exeRenamed) {
-        // 用户改过 exe 名: 新 Phoenix.exe 换入后复制为实际名字
-        out << "if exist \"" << nAppDir << "\\Phoenix.exe\" (\n";
-        out << "    copy /y \"" << nAppDir << "\\Phoenix.exe\" \"" << nExePath << "\" >> \"%ULOG%\" 2>&1\n";
+        // 用户改过 exe 名: 新 HuanJing.exe 换入后复制为实际名字
+        out << "if exist \"" << nAppDir << "\\HuanJing.exe\" (\n";
+        out << "    copy /y \"" << nAppDir << "\\HuanJing.exe\" \"" << nExePath << "\" >> \"%ULOG%\" 2>&1\n";
         out << ")\n";
     }
 
@@ -847,7 +853,7 @@ void AutoUpdater::finalizeManifestUpdate()
     out << ":copyfail\n";
     out << "echo.\n";
     out << "echo  [失败] 文件换入失败(robocopy 退出码 %errorlevel%)，详见 %ULOG%\n";
-    out << "echo  请关闭占用程序(杀毒软件/资源管理器)后, 重新打开 Phoenix 再点一次更新即可续传。\n";
+    out << "echo  请关闭占用程序(杀毒软件/资源管理器)后, 重新打开幻境再点一次更新即可续传。\n";
     out << "echo  换入失败 robocopy exit=%errorlevel% >> \"%ULOG%\"\n";
     out << "pause\n";
     out << "exit /b 1\n";

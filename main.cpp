@@ -38,7 +38,6 @@
 #include "qrcodegenerator.h"
 #include "autoupdater.h"
 #include "p2ploguploader.h"
-#include "zjcinstaller.h"   // ⭐ zjc_worker 分离后按需下载安装 + 上报
 
 // ⭐ Qt WebEngine（Chromium 内核）—— 仅当 CMake 检测到 WebEngine 时启用（HAVE_WEBENGINE）
 #ifdef HAVE_WEBENGINE
@@ -409,80 +408,6 @@ void clearFramesDirectory()
     qDebug() << "🗑️ 清理 frames 目录:" << framesDir << "删除" << count << "个文件";
 }
 
-// ⭐ 子进程名称（守护进程）
-static const char *ZJC_WORKER_NAME = "zjc_worker.exe";
-
-// ⭐ 终止所有同名子进程
-void killSubprocess(const char *processName)
-{
-#ifdef Q_OS_WIN
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
-
-    PROCESSENTRY32W pe;
-    pe.dwSize = sizeof(pe);
-
-    QString targetName = QString::fromLocal8Bit(processName);
-
-    if (Process32FirstW(hSnapshot, &pe)) {
-        do {
-            QString exeName = QString::fromWCharArray(pe.szExeFile);
-            if (exeName.compare(targetName, Qt::CaseInsensitive) == 0) {
-                HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
-                if (hProcess) {
-                    TerminateProcess(hProcess, 0);
-                    CloseHandle(hProcess);
-                    fprintf(stderr, "[SubProcess] Terminated %s (PID: %lu)\n",
-                            processName, pe.th32ProcessID);
-                }
-            }
-        } while (Process32NextW(hSnapshot, &pe));
-    }
-    CloseHandle(hSnapshot);
-#endif
-}
-
-// ⭐ 启动子进程（分离模式，主程序退出后继续运行）
-void launchSubprocess(const QString &appDir, const char *processName)
-{
-#ifdef Q_OS_WIN
-    QString exePath = appDir + "/" + QString::fromLocal8Bit(processName);
-    // 转为原生路径
-    QString nativePath = QDir::toNativeSeparators(exePath);
-
-    STARTUPINFOW si;
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;  // 隐藏窗口
-    ZeroMemory(&pi, sizeof(pi));
-
-    // 使用 CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS 让子进程独立运行
-    std::wstring wPath = nativePath.toStdWString();
-    BOOL ok = CreateProcessW(
-        wPath.c_str(),    // 可执行文件路径
-        NULL,             // 命令行参数
-        NULL, NULL,       // 安全属性
-        FALSE,            // 不继承句柄
-        CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
-        NULL,             // 使用父进程环境
-        QDir::toNativeSeparators(appDir).toStdWString().c_str(),  // 工作目录
-        &si, &pi
-    );
-
-    if (ok) {
-        fprintf(stderr, "[SubProcess] Launched %s (PID: %lu)\n",
-                processName, pi.dwProcessId);
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-    } else {
-        fprintf(stderr, "[SubProcess] Failed to launch %s (error: %lu)\n",
-                processName, GetLastError());
-    }
-#endif
-}
-
 // ⭐ 早期诊断日志（Qt 日志系统初始化前使用）
 static QFile *g_earlyLogFile = nullptr;
 
@@ -576,40 +501,6 @@ int main(int argc, char *argv[])
         earlyLog("[GStreamer] Removed old registry cache, will rescan plugins");
     }
     
-    // ⭐ 2026-07-23（§44）：子进程改用自己的专属账号（PC_<设备号>/123456），不再共用主进程真人账号。
-    //   历史做法是把 Phoenix 登录的真人账号+本机保存的密码同步到
-    //   %ProgramData%\zjc_worker\zjc_auth.json，让 zjc_worker 用同一账号登录。问题：真人在别处
-    //   改过密码后，本机保存的旧密码被同步给子进程 → 子进程登录「密码错误」→ 拿不到 token →
-    //   连不上 WS → pc:online 不写 → 子进程离线（PC登录日志里大量 zjc_worker/subprocess 密码错误）。
-    //   现改为：主进程只负责「清掉塞进去的真人账号凭证」，子进程读不到凭证会 auto-register 自己的
-    //   PC_<设备号>/123456 专属账号（后端对 PC_*/zjc_* 账号做密码校准，自愈）。仅当文件里是真人账号
-    //   时才删；若已是专属账号（PC_/zjc_ 前缀，子进程自己写的）则保留，避免每次启动逼子进程重注册。
-    auto clearHumanZjcCreds = []() {
-#ifdef Q_OS_WIN
-        wchar_t pdPath[MAX_PATH];
-        ExpandEnvironmentStringsW(L"%ProgramData%\\zjc_worker\\zjc_auth.json", pdPath, MAX_PATH);
-        QString pdFile = QString::fromWCharArray(pdPath);
-        QFile f(pdFile);
-        if (f.open(QIODevice::ReadOnly)) {
-            const QByteArray data = f.readAll();
-            f.close();
-            const QString u  = QJsonDocument::fromJson(data).object().value("username").toString();
-            const QString ul = u.toLower();
-            const bool dedicated = ul.startsWith("pc_") || ul.startsWith("zjc_");
-            if (!dedicated) {
-                QFile::remove(pdFile);
-                qDebug() << "[AuthSync] 已删除子进程凭证里的真人账号，改用专属账号。原账号:" << u;
-            }
-        }
-#endif
-    };
-    clearHumanZjcCreds();
-
-    // ⭐ zjc_worker 已从主工程分离（第三十二章）：不再随 Phoenix 打包/放主进程目录，
-    //   改由 ZjcInstaller 在应用启动后按需从服务器下载安装（查版本→缺失/过旧则下载→
-    //   注册服务→上报安装状态）。见 main() 尾部 ZjcInstaller::ensureInstalledAsync 调用。
-    //   子进程账号已与主进程解耦：主进程不再同步真人账号，子进程用自己的 PC_<设备号> 专属账号。
-
     // ⭐ 初始化 GStreamer（必须在 Qt 之前，否则太慢）
     earlyLog("[GStreamer] Calling gst_init()...");
     gst_init(&argc, &argv);
@@ -671,12 +562,13 @@ int main(int argc, char *argv[])
     
     // 设置应用程序信息（QML Settings 需要）
     app.setOrganizationName("Acard");
-    app.setApplicationName("Phoenix");
+    app.setApplicationName("HuanJing");
     
     // ⭐ 初始化日志文件（保存到运行目录）
     // ⭐⭐⭐ 启动时清空所有日志文件
     QString appDirPath = QCoreApplication::applicationDirPath();
-    QString logPath = appDirPath + "/phoenix_log.txt";
+    // ⭐ 2026-08-14 aihj 品牌：主日志 phoenix_log.txt → huanjing_log.txt
+    QString logPath = appDirPath + "/huanjing_log.txt";
     
     // 清空 yh.txt（统计日志）
     QFile yhFile(appDirPath + "/yh.txt");
@@ -719,7 +611,7 @@ int main(int argc, char *argv[])
         }
     }
     
-    // 清空 phoenix_log.txt（主日志）- 使用 Truncate 而非 Append
+    // 清空 huanjing_log.txt（主日志）- 使用 Truncate 而非 Append
     g_logFile = new QFile(logPath);
     if (g_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         qInstallMessageHandler(customMessageHandler);
@@ -845,18 +737,6 @@ int main(int argc, char *argv[])
         WebSocketClient::instance()->disconnectFromServer();
     });
 
-    // ⭐ 登录成功后（§44）：不再把真人账号同步给子进程；只清掉可能残留的真人账号凭证，
-    //   子进程会用自己的 PC_<设备号> 专属账号 auto-register。仍按需触发 zjc_worker 下载安装
-    //   （幂等：整个进程生命周期只真正跑一次）。baseUrl+pcDeviceId 此时均已就绪。
-    QObject::connect(HttpClient::instance(), &HttpClient::loginSuccess,
-        [clearHumanZjcCreds](const QString &, const QString &, const QString &,
-                             const QJsonArray &, int, const QString &,
-                             const QString &, int, const QVariantList &, const QVariantList &) {
-            HttpClient *http = HttpClient::instance();
-            clearHumanZjcCreds();  // 若子进程凭证里塞的是真人账号则删掉，回落到专属账号
-            ZjcInstaller::ensureInstalledAsync(http->baseUrl(), http->pcDeviceId());
-        });
-    
     // 创建并添加图像提供者
     CaptureImageProvider *captureProvider = new CaptureImageProvider();
     engine.addImageProvider("capture", captureProvider);
@@ -927,10 +807,6 @@ int main(int argc, char *argv[])
     
     // ⭐ 程序退出时清理 frames 目录
     clearFramesDirectory();
-    
-    // ⭐ 2026-07-23（§44）：退出时不再把真人账号凭证同步给子进程（子进程改用自己的 PC_<设备号>
-    //   专属账号，见启动处说明）。仅清掉 Phoenix 目录下遗留的 zjc_auth.json 历史副本（分离后已不用）。
-    QFile::remove(appDirPath + "/zjc_auth.json");
     
     // 程序退出，关闭日志文件（先停日志线程冲刷余量，再关文件）
     qDebug() << "========== 程序退出 ==========";

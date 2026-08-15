@@ -5,7 +5,7 @@ project(Phoenix VERSION 0.1 LANGUAGES C CXX)
 # ⭐ §43 版本号单一来源：发版只改这一行！
 #   - autoupdater.cpp 经宏 PHOENIX_VERSION_STR 得到当前版本（不再硬编码）
 #   - pack.bat 解析本行生成 manifest.json / yqlversion_new.json
-set(PHOENIX_APP_VERSION "8.3.7")
+set(PHOENIX_APP_VERSION "1.0.0")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,11 +27,8 @@ set(FFMPEG_INCLUDE_DIR "${FFMPEG_ROOT}/include")
 set(FFMPEG_LIB_DIR "${FFMPEG_ROOT}/lib")
 set(FFMPEG_BIN_DIR "${FFMPEG_ROOT}/bin")
 
-# ONNX Runtime 路径（AI 牌位置识别，CPU 版）
-# 下载 onnxruntime-win-x64-<ver>.zip，把 include/ 和 lib/ 拷到 C:/onnxruntime
-set(ONNXRUNTIME_ROOT "C:/onnxruntime")
-set(ONNXRUNTIME_INCLUDE_DIR "${ONNXRUNTIME_ROOT}/include")
-set(ONNXRUNTIME_LIB_DIR "${ONNXRUNTIME_ROOT}/lib")
+# ⭐ aihj 版：AI 牌位置识别（ONNX Runtime + cardYolov8）整套下线，不再依赖 C:/onnxruntime。
+#   carddetector.cpp/h 保留但已改为无 ONNX 的空实现（见文件顶部说明）。
 
 # vcpkg 安装路径（仅用于 turbojpeg，不使用 vcpkg 的 GStreamer）
 set(VCPKG_ROOT "D:/javafx/Acard/aic/vcpkg/installed/x64-windows")
@@ -71,7 +68,7 @@ qt_add_executable(Phoenix
     # webrtcclient.h
     capturemanager.cpp
     capturemanager.h
-    carddetector.cpp     # AI 牌位置识别（ONNX Runtime，CPU 推理，独立后台线程）
+    carddetector.cpp     # ⭐ aihj：AI 牌识别已下线，保留空实现接口（无 ONNX 依赖）
     carddetector.h
     slowmotionplayer.cpp
     slowmotionplayer.h
@@ -102,8 +99,6 @@ qt_add_executable(Phoenix
     httpclient.h
     p2ploguploader.cpp   # ⭐ P2P诊断日志上报器（总后台开关控制，按推流ID分流上传）
     p2ploguploader.h
-    zjcinstaller.cpp     # ⭐ zjc_worker 分离后：查版本→按需从服务器下载安装服务→上报状态
-    zjcinstaller.h
     websocketclient.cpp
     websocketclient.h
     shortcutstore.cpp
@@ -126,8 +121,6 @@ target_include_directories(Phoenix PRIVATE
     "${GSTREAMER_ROOT}/lib/glib-2.0/include"
     # vcpkg（仅用于 turbojpeg.h）
     ${VCPKG_INCLUDE_DIR}
-    # ONNX Runtime（AI 牌位置识别）
-    ${ONNXRUNTIME_INCLUDE_DIR}
 )
 
 # ⭐ GStreamer WebRTC API 需要此宏定义
@@ -153,7 +146,6 @@ target_link_directories(Phoenix PRIVATE
     ${GSTREAMER_LIB_DIR}
     ${FFMPEG_LIB_DIR}
     ${VCPKG_LIB_DIR}  # 仅用于 turbojpeg
-    ${ONNXRUNTIME_LIB_DIR}  # ONNX Runtime（AI 牌位置识别）
 )
 
 # 链接库
@@ -174,8 +166,6 @@ target_link_libraries(Phoenix PRIVATE
     # datachannel
     # libjpeg-turbo (软件 JPEG 编码/解码，备用)
     turbojpeg
-    # ONNX Runtime（AI 牌位置识别，CPU 推理）
-    onnxruntime
     # GStreamer（核心 + WebRTC）
     gstreamer-1.0
     gstapp-1.0
@@ -224,8 +214,19 @@ qt_add_qml_module(Phoenix
         images/yql.png
         images/zwtp.png
         images/avatar.png
+        images/head.png
         images/icon.png
         images/fh.png
+        images/frame.png
+        images/down.png
+        images/sbbd.png
+        images/xjsd.png
+        images/kjjsz.png
+        images/hxpl.png
+        images/qp.png
+        images/bar.png
+        images/max.png
+        images/close.png
         webplayer_test.html
 )
 
@@ -249,10 +250,12 @@ set_target_properties(Phoenix PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
+    # ⭐ 2026-08-14 aihj 品牌：产物名 HuanJing.exe（幻境；target 名保留 Phoenix，避免大范围改动）
+    OUTPUT_NAME "HuanJing"
 )
 
-# §23.14 冻结取证：Release 也产出 Phoenix.pdb（放 exe 同级），
-# 让 freeze_diag.txt 的主线程栈能把 Phoenix.exe 帧解析成 函数名+源文件:行号。
+# §23.14 冻结取证：Release 也产出 HuanJing.pdb（放 exe 同级），
+# 让 freeze_diag.txt 的主线程栈能把 HuanJing.exe 帧解析成 函数名+源文件:行号。
 # /Zi 不改代码生成（仍 /O2 优化），仅多写调试信息；/DEBUG 默认会关掉
 # /OPT:REF|ICF，显式加回避免 exe 变大/布局变化。
 if(MSVC)
@@ -303,8 +306,6 @@ add_custom_command(TARGET Phoenix POST_BUILD
         "${GSTREAMER_ROOT}/bin/gsttag-1.0-0.dll"
         "${GSTREAMER_ROOT}/bin/gstnet-1.0-0.dll"
         "${GSTREAMER_ROOT}/bin/gstsctp-1.0-0.dll"
-        # ONNX Runtime（AI 牌位置识别，CPU 推理）
-        "${ONNXRUNTIME_LIB_DIR}/onnxruntime.dll"
         $<TARGET_FILE_DIR:Phoenix>
 )
 
@@ -329,18 +330,6 @@ if(HAVE_KERNEL_TEST)
         COMMENT "复制 Qt WebEngine 运行时（QtWebEngineProcess + resources + locales）"
     )
 endif()
-
-# ⭐ 拷贝 AI 模型到输出目录的 models/ 子目录（代码用 applicationDirPath()/models 读取）
-add_custom_command(TARGET Phoenix POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Phoenix>/models"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/resources/models/cardYolov8.onnx"
-        "$<TARGET_FILE_DIR:Phoenix>/models/cardYolov8.onnx"
-)
-
-# ⭐ zjc_worker 已分离为独立工程（见 zjc_worker/CMakeLists.txt）：
-#   不再随 Phoenix 编译/打包，改由服务器下发、Phoenix 启动时按需下载安装
-#   （ZjcInstaller）。打包 Phoenix 时不含 zjc_worker.exe / WinDivert.*。
 
 include(GNUInstallDirs)
 install(TARGETS Phoenix

@@ -1,0 +1,8 @@
+{
+    "version":  "1.0.0",
+    "manifestUrl":  "https://update.cocoaihj.com/updatesoft/v1.0.0/manifest.json",
+    "changelog":  "1. TODO: fill in changelog",
+    "forceUpdate":  false,
+    "downloadUrl":  "https://update.cocoaihj.com/updatesoft/release.zip",
+    "updateMode":  1
+}

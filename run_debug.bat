@@ -30,8 +30,8 @@ echo.
 
 REM 运行程序
 cd /d "%~dp0build\Desktop_Qt_6_10_3_MSVC2022_64bit-Debug"
-echo Starting appAifs.exe from %CD%
+echo Starting HuanJing.exe from %CD%
 echo.
-appAifs.exe
+HuanJing.exe
 
 pause

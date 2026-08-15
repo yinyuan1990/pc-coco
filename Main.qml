@@ -7,11 +7,11 @@ import Aifs.Components
 ApplicationWindow {
     id: mainWindow
     visible: true
-    title: "金凤凰"
+    title: "幻境"
     
     // 登录状态
     property bool isLoggedIn: false
-    property string srsServer: "171.80.4.72"
+    property string srsServer: "47.122.115.33"  // ⭐ aihj SRS 流媒体服务器
     property string currentStream: "VID_59C9232BFF5576718C575E19EDE7"
     
     // ⭐ 启动画面状态
@@ -21,12 +21,16 @@ ApplicationWindow {
     signal windowSizeChanged(int newWidth, int newHeight)
     
     // 初始尺寸（登录/注册卡片大小）
-    //   ⭐ 2026-06-24：登录页新增「播放内核」分段选择（约 +84px），原 502 高度会把
-    //      豪华版/AI全能版/注册按钮挤出可视区，故登录态高度提到 590。
+    //   ⭐ 2026-08-13：登录/注册窗口高度 650 → 700。
     width: 600
-    height: 590
-    minimumWidth: isLoggedIn ? 1280 : 600
-    minimumHeight: isLoggedIn ? 720 : 590
+    height: 700
+    // ⭐ 2026-08-15 修「登录后登录页先被撑大」：最小尺寸不能绑 isLoggedIn——
+    //   登录成功瞬间 isLoggedIn=true，但 MainPage 是异步加载（§24），窗口切换推迟到
+    //   mainPageLoader.onLoaded；绑定抢跑会让 600x700 的登录窗口立刻被最小尺寸
+    //   1280x720 强制撑大，登录卡片跟着拉大。最小尺寸改为进主页时 switchTimer
+    //   显式设 1280x720、退出登录时显式设回 600x700。
+    minimumWidth: 600
+    minimumHeight: 700
     flags: Qt.Window | Qt.FramelessWindowHint
     color: "transparent"
     
@@ -39,8 +43,11 @@ ApplicationWindow {
         // ⭐ 启动画面计时器（2秒后隐藏）
         splashTimer.start()
         
-        // 启动时检查更新（与 Java 版使用相同的服务器）
-        AutoUpdater.setUpdateUrl("http://dl.147258yql.cn/updatesoft/yqlversion.json?v=" + Date.now())
+        // 启动时检查更新（aihj 更新域名，DCDN 回源 nginx /updatesoft/ → /opt/yql/www/soft）
+        // ⭐ 2026-08-14 改用 hjversion.json：老文件名 yqlversion.json 曾传过主线的 8.3.7，
+        //   部分 CDN 节点缓存了旧内容且 CDN 忽略 ?v= 参数（实测 X-Cache HIT）穿不透，
+        //   换全新文件名让所有节点强制回源。发版时记得同步更新服务器上的 hjversion.json！
+        AutoUpdater.setUpdateUrl("https://update.cocoaihj.com/updatesoft/hjversion.json?v=" + Date.now())
         AutoUpdater.checkForUpdates()
     }
     
@@ -430,21 +437,18 @@ ApplicationWindow {
         id: logoutTimer
         interval: 50
         onTriggered: {
-            // 先切换状态（这样 minimumWidth/Height 的绑定会生效）
+            // 先切换状态（最小尺寸已不再绑 isLoggedIn，下面显式恢复 600x700）
             isLoggedIn = false
             
-            // ⭐ 恢复登录页窗口尺寸（必须与首次启动初始值完全一致：600 x 590）。
-            //   2026-06-24：登录页加了「播放内核」分段选择后初始高度从 502 提到 590，
-            //   此处退出登录路径之前漏改、还写 502，导致退出后窗口比首次启动矮 88px，
-            //   豪华版/AI全能版/注册按钮被挤出可视区。统一改 590。
+            // ⭐ 恢复登录页窗口尺寸（必须与首次启动初始值完全一致：600 x 700）。
             mainWindow.minimumWidth = 600
-            mainWindow.minimumHeight = 590
+            mainWindow.minimumHeight = 700
             mainWindow.maximumWidth = 600
-            mainWindow.maximumHeight = 590
+            mainWindow.maximumHeight = 700
             mainWindow.width = 600
-            mainWindow.height = 590
+            mainWindow.height = 700
             mainWindow.x = (Screen.width - 600) / 2
-            mainWindow.y = (Screen.height - 590) / 2
+            mainWindow.y = (Screen.height - 700) / 2
             mainWindow.color = "transparent"
             
             // 延迟一帧后解除最大尺寸限制
@@ -458,16 +462,101 @@ ApplicationWindow {
         }
     }
     
-    // ⭐ 启动画面（显示 fh.png 2秒，无背景）
-    Image {
+    // ⭐ 启动画面：仿老 Java 版 SplashScreen（假进度，2 秒后由 splashTimer 关闭）
+    Rectangle {
         id: splashScreen
-        anchors.fill: parent
+        width: 400
+        height: 280
+        anchors.centerIn: parent
         visible: showSplash
         z: 100  // 确保在最上层
-        source: "images/fh.png"
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-        antialiasing: true
+        radius: 20
+        border.color: "#50505A"
+        border.width: 1
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#1E1E23" }
+            GradientStop { position: 1.0; color: "#2D2D37" }
+        }
+
+        // 假进度：0→100 匀速走完，配合阶段状态文案
+        property real fakeProgress: 0
+        property string statusText: "正在启动..."
+
+        NumberAnimation on fakeProgress {
+            from: 0; to: 100
+            duration: 1900
+            running: showSplash
+        }
+        onFakeProgressChanged: {
+            if (fakeProgress < 30) statusText = "正在启动..."
+            else if (fakeProgress < 65) statusText = "初始化 GStreamer..."
+            else if (fakeProgress < 90) statusText = "加载组件..."
+            else statusText = "启动完成"
+        }
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 0
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "AI 幻镜"
+                font.family: "Segoe UI"
+                font.pixelSize: 42
+                font.weight: Font.Bold
+                color: "#42A5F5"
+            }
+
+            Item { width: 1; height: 8 }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Secure Vision System"
+                font.family: "Segoe UI"
+                font.pixelSize: 14
+                color: "#B4B4BE"
+            }
+
+            Item { width: 1; height: 4 }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "v" + AutoUpdater.currentVersion
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+                color: "#787882"
+            }
+
+            Item { width: 1; height: 40 }
+
+            // 进度条
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 300
+                height: 8
+                radius: 4
+                color: "#3C3C46"
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width * splashScreen.fakeProgress / 100
+                    radius: 4
+                    color: "#42A5F5"
+                }
+            }
+
+            Item { width: 1; height: 12 }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: splashScreen.statusText
+                font.family: "PingFang HK"
+                font.pixelSize: 12
+                color: "#9696A0"
+            }
+        }
     }
     
     // 登录页面（登录前显示，启动画面结束后）
@@ -537,10 +626,11 @@ ApplicationWindow {
         modal: true
         closePolicy: Popup.NoAutoClose
         
+        // ⭐ 2026-08-14：换成 aihj 深色规范（#1F1F1F 底 / #3A3A3A 边框 / #FAFAFA 文字 / #607AFB 主按钮）
         background: Rectangle {
-            color: "#2d2d2d"
+            color: "#1F1F1F"
             radius: 12
-            border.color: "#3c3c3c"
+            border.color: "#3A3A3A"
             border.width: 1
         }
         
@@ -551,18 +641,11 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
-                text: "🎉 发现新版本"
+                text: "发现新版本"
                 font.family: "PingFang HK"
                 font.pixelSize: 18
                 font.bold: true
-                color: "#E0E0E0"
-            }
-            
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
-                color: "#3c3c3c"
+                color: "#FAFAFA"
             }
         }
         
@@ -580,32 +663,32 @@ ApplicationWindow {
                     text: "当前版本："
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#9E9E9E"
+                    color: "#64748b"
                 }
                 Text {
                     text: AutoUpdater.currentVersion
                     font.family: "PingFang HK"
                     font.pixelSize: 14
                     font.bold: true
-                    color: "#CCCCCC"
+                    color: "#FAFAFA"
                 }
                 Text {
                     text: "→"
                     font.pixelSize: 14
-                    color: "#808080"
+                    color: "#64748b"
                 }
                 Text {
                     text: "新版本："
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#9E9E9E"
+                    color: "#64748b"
                 }
                 Text {
                     text: AutoUpdater.latestVersion
                     font.family: "PingFang HK"
                     font.pixelSize: 14
                     font.bold: true
-                    color: "#4CAF50"
+                    color: "#607AFB"
                 }
             }
             
@@ -615,8 +698,10 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.leftMargin: 20
                 Layout.rightMargin: 20
-                color: "#1e1e1e"
-                radius: 6
+                color: "#292929"
+                radius: 8
+                border.color: "#3A3A3A"
+                border.width: 1
                 
                 ScrollView {
                     anchors.fill: parent
@@ -627,7 +712,7 @@ ApplicationWindow {
                         text: AutoUpdater.changelog || "暂无更新说明"
                         font.family: "PingFang HK"
                         font.pixelSize: 13
-                        color: "#CCCCCC"
+                        color: "#9ca3af"
                         wrapMode: Text.Wrap
                         lineHeight: 1.5
                     }
@@ -647,7 +732,7 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     text: AutoUpdater.downloadProgress + "%"
                     font.pixelSize: 12
-                    color: "#CCCCCC"
+                    color: "#FAFAFA"
                 }
             }
 
@@ -660,7 +745,7 @@ ApplicationWindow {
                 text: AutoUpdater.statusText
                 font.family: "PingFang HK"
                 font.pixelSize: 12
-                color: "#9E9E9E"
+                color: "#9ca3af"
                 elide: Text.ElideMiddle
             }
 
@@ -678,7 +763,7 @@ ApplicationWindow {
                     font.family: "PingFang HK"
                     font.pixelSize: 14
                     font.bold: true
-                    color: "#4CAF50"
+                    color: "#607AFB"
                     horizontalAlignment: Text.AlignHCenter
                 }
                 Text {
@@ -686,7 +771,7 @@ ApplicationWindow {
                     text: "安装完成后程序将自动重启"
                     font.family: "PingFang HK"
                     font.pixelSize: 12
-                    color: "#9E9E9E"
+                    color: "#9ca3af"
                     horizontalAlignment: Text.AlignHCenter
                 }
 
@@ -711,8 +796,8 @@ ApplicationWindow {
                 Rectangle {
                     Layout.preferredWidth: 100
                     height: 36
-                    radius: 6
-                    color: laterArea.containsMouse ? "#4a4a4a" : "#3c3c3c"
+                    radius: 8
+                    color: laterArea.containsMouse ? "#374151" : "#292929"
                     visible: !AutoUpdater.isDownloading
                     
                     Text {
@@ -720,7 +805,7 @@ ApplicationWindow {
                         text: "稍后提醒"
                         font.family: "PingFang HK"
                         font.pixelSize: 13
-                        color: "#9E9E9E"
+                        color: "#FAFAFA"
                     }
                     
                     MouseArea {
@@ -736,8 +821,8 @@ ApplicationWindow {
                 Rectangle {
                     Layout.preferredWidth: 100
                     height: 36
-                    radius: 6
-                    color: AutoUpdater.isDownloading ? "#999999" : (updateNowArea.containsMouse ? "#388E3C" : "#4CAF50")
+                    radius: 8
+                    color: AutoUpdater.isDownloading ? "#3A3A3A" : (updateNowArea.containsMouse ? "#4E66DA" : "#607AFB")
                     
                     Text {
                         anchors.centerIn: parent

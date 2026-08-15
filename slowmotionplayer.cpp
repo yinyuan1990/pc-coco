@@ -16,7 +16,7 @@
 
 SlowMotionPlayer::SlowMotionPlayer(QObject *parent)
     : QObject(parent)
-    , m_settings("Acard", "Aifs")
+    , m_settings("Acard", "HuanJing")
     , m_frameCache(FRAME_CACHE_SIZE)  // 初始化帧缓存
 {
     qDebug() << "📦 SlowMotionPlayer 构造开始...";

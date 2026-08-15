@@ -7,7 +7,7 @@ import Aifs.Components 1.0
 
 Rectangle {
     id: mainPage
-    color: mainPage.pcActivationLevel >= 2 ? "#C8DFC0" : "#CAD9F2"  // 等级2绿色，等级1蓝色
+    color: "#1F1F1F"  // ⭐ 2026-08-14 对齐 java gstream：主内容区深色底
     focus: true  // ⭐ 获取键盘焦点
     
     // ⭐ S键按下/释放检测（用于 S+滚轮 缩放）
@@ -212,8 +212,9 @@ Rectangle {
     // 切内核后把 Android 本地滤镜重新落到新的活动 sink（GStreamer/网页内核）
     onUseWebEngineKernelChanged: refreshFilterRouting()
     
-    // ⭐ 面板背景色（使用完整 HSV）
-    property color panelBgColor: Qt.hsva(appSettings.panelColorH, appSettings.panelColorS, appSettings.panelColorV, 1)
+    // ⭐ 面板背景色 — 2026-08-14 对齐 java gstream 固定深色（截图/慢放区 #1F1F1F），
+    //   不再跟随「面板色」滑块（该菜单已下线）；实时流窗口单独用 #292929（java 的 element2_1）
+    property color panelBgColor: "#1F1F1F"
     
     // ⭐ 面板文字颜色（根据背景亮度自动选择）
     property color panelTextColor: {
@@ -282,10 +283,10 @@ Rectangle {
     
     // 会员等级控制（来自 CONFIG_STATE 消息）
     property bool memberActivated: false           // 是否已激活
-    property int memberActivationLevel: 0          // 激活等级 (0=试用全开放, 1=高清, 2=超清, 3=超高帧, 4=超超清)
-    property string memberActivationLevelName: ""  // 等级名称
-    property var levelFps: [240, 120, 180, 180, 240]  // ⭐ 各等级FPS上限（从登录接口获取，下标0=试用,1=高清,2=超清,3=超高清,4=超高帧）
-    property var levelExposureFps: [600, 120, 180, 240, 600]  // ⭐ 各等级超级帧率上限（从登录接口获取，下标0=试用,1=高清,2=超清,3=超高清,4=超高帧）
+    property int memberActivationLevel: 0          // 激活等级 (对齐 java gstream：0=试用全开放, 1=高清, 2=4K；只区分分辨率)
+    property string memberActivationLevelName: ""  // 等级名称（后端下发："高清"/"4K"）
+    property var levelFps: [240, 120, 180, 180, 240]  // ⭐ 各等级FPS上限（从登录接口获取；现仅用下标0=试用，会员不限制）
+    property var levelExposureFps: [600, 120, 180, 240, 600]  // ⭐ 各等级超级帧率上限（从登录接口获取；现仅用下标0=试用，会员不限制）
     // ⭐ 快门(超级帧率cjfps)后台可配（总后台「App配置」，GET /api/config/camera-shutter）：
     //   {min,max,step,default} 按 iOS/Android 分组，shutterCfg = 当前连接设备平台生效的一组。
     //   拉取失败/未配置时维持内置默认（与原写死值一致：60~600 步进1 默认120）。
@@ -679,14 +680,7 @@ Rectangle {
         // ⭐⭐⭐ 第二道防线：收到降帧请求，通知前端iOS调整推流帧率
         // v9.3 新增：urgency 紧急度 + reason 触发原因
         // v9.3 优化：根据【会员等级】+【当前档位】来决定可用的帧率档位
-        // 
-        // 帧率上限规则：
-        //   4K档位：任意等级 → 最大120（对应30fps）
-        //   其他档位 + 等级1(高清)：最大120（对应30fps）
-        //   其他档位 + 等级2(超清)：最大180（对应45fps）
-        //   其他档位 + 等级3(超高帧)：最大180（对应45fps）
-        //   其他档位 + 等级4(超超清)：最大240（对应60fps）
-        //   试用/日试用：最大240（对应60fps）
+        // ⭐ 2026-08-14 简化：会员一律不限帧率（上限240），试用/未激活走 levelFps[0]
         //
         // 四档阶梯（服务器格式）：240(60fps) → 180(45fps) → 120(30fps) → 60(15fps)
         onRequestFpsChange: function(targetFps, urgency, reason) {
@@ -814,9 +808,9 @@ Rectangle {
         target: EventBus
         function onCaptureTriggered() {
             // ⭐ 抓拍时保存当前缩放状态，新 item 将继承这个缩放
-            // ⭐ PC等级1(豪华版)：不保存缩放，截图item始终1倍
+            // ⭐ 2026-08-14：PC 端已改单版本，去掉「豪华版不保存缩放」的等级门槛，一律继承
             var nextIndex = captureManager.count  // 下一个 item 的索引
-            if (mainPage.pcActivationLevel >= 2) {
+            {
                 // ⭐ 抓拍继承实时流缩放：按实时流容器尺寸换算成归一化分量存入（与 item/单个放大同一套）
                 var z = mainPage.videoZoom
                 var fx = 0, fy = 0
@@ -827,8 +821,6 @@ Rectangle {
                     fy = my > 0 ? Math.max(-1, Math.min(1, mainPage.videoOffsetY / my)) : 0
                 }
                 mainPage.saveItemZoomNorm(nextIndex, z, fx, fy)
-            } else {
-                mainPage.saveItemZoomNorm(nextIndex, 1.0, 0, 0)
             }
             captureManager.zoomLog("📸 抓拍保存: index=" + nextIndex + " zoom=" + mainPage.videoZoom + " offsetX=" + mainPage.videoOffsetX + " offsetY=" + mainPage.videoOffsetY + " pcLevel=" + mainPage.pcActivationLevel)
             captureManager.zoomLog("📸 itemZoomMap: " + JSON.stringify(mainPage.itemZoomMap))
@@ -957,13 +949,14 @@ Rectangle {
     }
 
     // ============ 顶部菜单栏 ============
+    // ⭐ 2026-08-14 配色对齐 java gstream：深色标题栏 #1F1F1F，文字 #FAFAFA
     Rectangle {
         id: topMenuBar
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         height: 56
-        color: mainPage.pcActivationLevel >= 2 ? "#C8DFC0" : "#CAD9F2"  // 等级2绿色，等级1蓝色
+        color: "#1F1F1F"
         
         // 窗口拖动区域（z=0，在菜单项之下）
         MouseArea {
@@ -1000,25 +993,54 @@ Rectangle {
         RowLayout {
             z: 1  // 在拖动区域之上
             anchors.fill: parent
-            anchors.leftMargin: 48
+            anchors.leftMargin: 12  // ⭐ 2026-08-14 对齐 java gstream：菜单按钮距左 12
             anchors.rightMargin: 10  // 减小右边距，让头像能靠近右边缘
             spacing: 0
             
             // ===== 左侧菜单项 =====
             RowLayout {
                 Layout.fillHeight: true
-                spacing: 36
+                spacing: 16  // ⭐ 2026-08-14 对齐 java gstream titleBar spacing=16
                 
-                // 窗口布局下拉菜单
-                Text {
+                // 菜单下拉按钮（⭐ 2026-08-14 对齐 java gstream：frame 图标 +「菜单」+ 下拉箭头）
+                Rectangle {
                     id: windowLayoutText
-                    text: "窗口布局 ▼"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#263238"
+                    width: menuBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: menuBtnArea.containsMouse || windowLayoutMenu.visible ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    Row {
+                        id: menuBtnRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        
+                        Image {
+                            source: "images/frame.png"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            text: "菜单"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Image {
+                            source: "images/down.png"
+                            width: 8; height: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                    }
                     
                     MouseArea {
+                        id: menuBtnArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: windowLayoutMenu.open()
                     }
@@ -1028,11 +1050,19 @@ Rectangle {
                         y: windowLayoutText.height + 4
                         width: 200
                         
-                        // ⭐ 抓拍全屏菜单项：等级1不显示，等级2才显示
-                        // 使用 Repeater 条件创建菜单项
+                        // ⭐ 2026-08-14 弹框样式对齐 java gstream（.no-arrow-menu .context-menu）
+                        background: Rectangle {
+                            implicitWidth: 200
+                            color: "#292929"
+                            radius: 8
+                            border.color: "#3A3A3A"
+                            border.width: 1
+                        }
+                        
+                        // ⭐ 抓拍全屏菜单项（2026-08-14 需求：老 java gstream 没有 → 不显示，代码保留）
                         Repeater {
-                            model: mainPage.pcActivationLevel >= 2 ? 1 : 0
-                            delegate: MenuItem {
+                            model: 0
+                            delegate: DarkMenuItem {
                                 text: "抓拍全屏 (" + ShortcutStore.gridFullscreenKey + ")"
                                 onTriggered: toggleGridFullscreen()
                                 
@@ -1042,64 +1072,123 @@ Rectangle {
                             }
                         }
                         
-                        MenuItem {
+                        DarkMenuItem {
                             text: "实时窗口切换 (" + ShortcutStore.realtimeWindowKey + ")"
                             onTriggered: swapRealtimeWindow()
                         }
-                        MenuItem {
+                        DarkMenuItem {
                             text: "慢放窗口切换 (" + ShortcutStore.slowmoWindowKey + ")"
                             onTriggered: swapSlowmoWindow()
                         }
-                        MenuSeparator { }
-                        MenuItem {
+                        MenuSeparator {
+                            contentItem: Rectangle {
+                                implicitHeight: 1
+                                color: "#3A3A3A"
+                            }
+                        }
+                        DarkMenuItem {
                             text: "快捷键说明"
                             onTriggered: shortcutHelpPopup.open()
                         }
                     }
                 }
                 
-                // 设备绑定
-                Text {
+                // 设备绑定（⭐ 2026-08-14 对齐 java gstream：sbbd 图标 +「绑定」）
+                Rectangle {
                     id: deviceBindText
-                    text: "设备绑定"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#263238"
+                    width: bindBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: bindBtnArea.containsMouse || bindMenu.visible ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    Row {
+                        id: bindBtnRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        
+                        Image {
+                            source: "images/sbbd.png"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            text: "绑定"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
                     
                     MouseArea {
+                        id: bindBtnArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: bindMenu.open()
                     }
                     
-                    // 绑定菜单
+                    // 绑定菜单（⭐ 2026-08-14 弹框样式对齐 java gstream）
                     Menu {
                         id: bindMenu
                         y: deviceBindText.height + 4
-                        width: 80
+                        width: 110
                         
-                        MenuItem {
+                        background: Rectangle {
+                            implicitWidth: 110
+                            color: "#292929"
+                            radius: 8
+                            border.color: "#3A3A3A"
+                            border.width: 1
+                        }
+                        
+                        DarkMenuItem {
                             text: "扫码绑定"
                             onTriggered: showScanBindPopup()
                         }
-                        MenuItem {
+                        DarkMenuItem {
                             text: "手动绑定"
                             onTriggered: manualBindDialog.open()
                         }
                     }
                 }
                 
-                // 相机设定（OTG 外接时隐藏：自带摄像头设定不可用，避免菜单栏占位却点不动）
-                Text {
+                // 相机设定（⭐ 2026-08-14 对齐 java gstream：xjsd 图标 +「相机」；OTG 外接时隐藏）
+                Rectangle {
                     id: cameraSettingText
                     visible: !CameraCapsStore.isOtg
-                    text: "相机设定(R)"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#263238"
+                    width: cameraBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: cameraBtnArea.containsMouse ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    Row {
+                        id: cameraBtnRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        
+                        Image {
+                            source: "images/xjsd.png"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            text: "相机"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
 
                     MouseArea {
+                        id: cameraBtnArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: showIosCameraSettings()
                     }
@@ -1112,7 +1201,7 @@ Rectangle {
                     text: "外接摄像头设定(O)"
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#1B5E20"
+                    color: "#81C784"
 
                     MouseArea {
                         anchors.fill: parent
@@ -1123,15 +1212,16 @@ Rectangle {
 
                 // ⭐ iOS 滤镜入口已隐藏 — 快捷键 P 替代菜单项, 见 Shortcut "P"
 
-                // 抓拍全屏开关
+                // 抓拍全屏开关（2026-08-14 需求：菜单栏不再显示，功能逻辑保留）
                 Row {
+                    visible: false
                     spacing: 6
                     
                     Text {
                         text: "抓拍全屏"
                         font.family: "PingFang HK"
                         font.pixelSize: 14
-                        color: "#263238"
+                        color: "#FAFAFA"
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     
@@ -1162,17 +1252,85 @@ Rectangle {
                     }
                 }
                 
-                // 横向/纵向切换
-                Text {
-                    text: captureManager.isHorizontalLayout ? "横向" : "纵向"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#263238"
+                // 横向/纵向切换（⭐ 2026-08-14 对齐 java gstream：hxpl 图标 +「横向排列/纵向排列」）
+                Rectangle {
+                    width: arrangeBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: arrangeBtnArea.containsMouse ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    Row {
+                        id: arrangeBtnRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        
+                        Image {
+                            source: "images/hxpl.png"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            text: captureManager.isHorizontalLayout ? "横向排列" : "纵向排列"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
                     
                     MouseArea {
+                        id: arrangeBtnArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: captureManager.isHorizontalLayout = !captureManager.isHorizontalLayout
+                    }
+                }
+
+                // 全屏模式开关（⭐ 2026-08-14 还原：对齐 java gstream 的「全屏（关/开）」按钮，qp 图标。
+                //   对应 A 键抓拍放大的显示方式：开=全屏显示，关=只覆盖截图框区域（halfScreenViewMode 取反））
+                Rectangle {
+                    width: fsModeBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: fsModeBtnArea.containsMouse ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    Row {
+                        id: fsModeBtnRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        
+                        Image {
+                            source: "images/qp.png"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            text: appSettings.halfScreenViewMode ? "全屏（关）" : "全屏（开）"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    
+                    MouseArea {
+                        id: fsModeBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            appSettings.halfScreenViewMode = !appSettings.halfScreenViewMode
+                            console.log("📺 放大查看模式:", appSettings.halfScreenViewMode ? "半屏(截图框)" : "全屏")
+                        }
+                        
+                        ToolTip.visible: containsMouse
+                        ToolTip.text: "抓拍放大显示方式：开=全屏显示，关=只覆盖截图框区域"
+                        ToolTip.delay: 300
                     }
                 }
                 
@@ -1264,8 +1422,9 @@ Rectangle {
                     }
                 }
                 
-                // ⭐ 放大查看模式开关（A键放大）
+                // ⭐ 放大查看模式开关（A键放大）（2026-08-14 需求：菜单栏不再显示，功能逻辑保留）
                 Row {
+                    visible: false
                     spacing: 4
                     height: parent.height
                     
@@ -1273,7 +1432,7 @@ Rectangle {
                         text: "半屏"
                         font.family: "PingFang HK"
                         font.pixelSize: 14
-                        color: "#263238"
+                        color: "#FAFAFA"
                         anchors.verticalCenter: parent.verticalCenter
                         
                         MouseArea {
@@ -1317,7 +1476,10 @@ Rectangle {
                 }
 
                 // ⭐ AI 牌位置放大开关
+                //   aihj 版：AI 牌识别整套下线，开关隐藏不可达（源码保留，QtQuick.Row 会
+                //   自动把 visible:false 的子项排除出布局，不占位）。
                 Row {
+                    visible: false
                     spacing: 4
                     height: parent.height
 
@@ -1371,60 +1533,33 @@ Rectangle {
                     //   去掉了原「前/后 影响帧数」传播张数下拉（不再需要）。
                 }
                 
-                // ⭐ 面板颜色调节（点击打开 PS 风格颜色选择器）
-                Row {
-                    spacing: 8
-                    height: parent.height
-                    
-                    Text {
-                        text: "面板色"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 14
-                        color: "#263238"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    
-                    // 颜色预览方块（点击打开选择器）
-                    Rectangle {
-                        id: panelColorPreview
-                        width: 24
-                        height: 24
-                        radius: 4
-                        color: panelBgColor
-                        border.color: "#666666"
-                        border.width: 1
-                        anchors.verticalCenter: parent.verticalCenter
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            hoverEnabled: true
-                            onClicked: colorPickerPopup.open()
-                            
-                            ToolTip.visible: containsMouse
-                            ToolTip.text: "点击选择面板颜色"
-                            ToolTip.delay: 300
-                        }
-                    }
-                }
-                
-                // ⭐ 快捷键说明按钮
+                // ⭐ 快捷键说明按钮（2026-08-14 对齐 java gstream：kjjsz 图标 +「快捷键」）
                 Rectangle {
-                    width: shortcutBtnText.width + 16
-                    height: 24
-                    radius: 4
-                    color: shortcutBtnArea.containsMouse ? "#C8E6C9" : "#E8F5E9"
-                    border.color: "#A5D6A7"
-                    border.width: 1
+                    width: shortcutBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: shortcutBtnArea.containsMouse ? "#3A3A3A" : "#292929"
                     anchors.verticalCenter: parent.verticalCenter
                     
-                    Text {
-                        id: shortcutBtnText
+                    Row {
+                        id: shortcutBtnRow
                         anchors.centerIn: parent
-                        text: "快捷键说明"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 12
-                        color: "#263238"
+                        spacing: 4
+                        
+                        Image {
+                            source: "images/kjjsz.png"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            id: shortcutBtnText
+                            text: "快捷键"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                     
                     MouseArea {
@@ -1435,7 +1570,234 @@ Rectangle {
                         onClicked: shortcutHelpPopup.open()
                     }
                 }
-                
+
+                // ⭐ 2026-08-14：行/列/前(预抓拍张数)/后(后抓拍张数) 从右下控制面板挪到顶部菜单栏，
+                //   样式对齐 java gstream 标题栏的「行：5 / 列：5 / 前：10 / 后：10」深色下拉按钮
+                Row {
+                spacing: 8
+                Layout.alignment: Qt.AlignVCenter
+
+                // 行
+                Rectangle {
+                    width: rowBtnLabel.width + 16
+                    height: 24
+                    radius: 8
+                    color: rowBtnArea.containsMouse || rowsInput.popup.visible ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: rowBtnLabel
+                        anchors.centerIn: parent
+                        text: "行：" + captureManager.gridRows
+                        font.family: "PingFang HK"
+                        font.pixelSize: 14
+                        color: "#FAFAFA"
+                    }
+
+                    MouseArea {
+                        id: rowBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: rowsInput.popup.open()
+                        onWheel: function(wheel) {
+                            if (wheel.angleDelta.y > 0 && rowsInput.currentIndex > 0) {
+                                rowsInput.currentIndex--
+                            } else if (wheel.angleDelta.y < 0 && rowsInput.currentIndex < rowsInput.count - 1) {
+                                rowsInput.currentIndex++
+                            }
+                            pendingRows = parseInt(rowsInput.currentText)
+                            gridUpdateTimer.restart()
+                        }
+                    }
+
+                    ComboBox {
+                        id: rowsInput
+                        anchors.fill: parent
+                        visible: false
+                        model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+                        currentIndex: captureManager.gridRows - 1
+                        onActivated: captureManager.gridRows = parseInt(currentText)
+                    }
+                }
+
+                // 列
+                Rectangle {
+                    width: colBtnLabel.width + 16
+                    height: 24
+                    radius: 8
+                    color: colBtnArea.containsMouse || colsInput.popup.visible ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: colBtnLabel
+                        anchors.centerIn: parent
+                        text: "列：" + captureManager.gridCols
+                        font.family: "PingFang HK"
+                        font.pixelSize: 14
+                        color: "#FAFAFA"
+                    }
+
+                    MouseArea {
+                        id: colBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: colsInput.popup.open()
+                        onWheel: function(wheel) {
+                            if (wheel.angleDelta.y > 0 && colsInput.currentIndex > 0) {
+                                colsInput.currentIndex--
+                            } else if (wheel.angleDelta.y < 0 && colsInput.currentIndex < colsInput.count - 1) {
+                                colsInput.currentIndex++
+                            }
+                            pendingCols = parseInt(colsInput.currentText)
+                            gridUpdateTimer.restart()
+                        }
+                    }
+
+                    ComboBox {
+                        id: colsInput
+                        anchors.fill: parent
+                        visible: false
+                        model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+                        currentIndex: captureManager.gridCols - 1
+                        onActivated: captureManager.gridCols = parseInt(currentText)
+                    }
+                }
+
+                // 前（预抓拍张数）
+                Rectangle {
+                    width: preBtnLabel.width + 16
+                    height: 24
+                    radius: 8
+                    color: preBtnArea.containsMouse || preFramesInput.popup.visible ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: preBtnLabel
+                        anchors.centerIn: parent
+                        text: "前：" + captureManager.preFrameCount
+                        font.family: "PingFang HK"
+                        font.pixelSize: 14
+                        color: "#FAFAFA"
+                    }
+
+                    MouseArea {
+                        id: preBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: preFramesInput.popup.open()
+                        onWheel: function(wheel) {
+                            if (wheel.angleDelta.y > 0 && preFramesInput.currentIndex > 0) {
+                                preFramesInput.currentIndex--
+                            } else if (wheel.angleDelta.y < 0 && preFramesInput.currentIndex < preFramesInput.count - 1) {
+                                preFramesInput.currentIndex++
+                            }
+                            captureManager.preFrameCount = parseInt(preFramesInput.currentText)
+                        }
+                    }
+
+                    ComboBox {
+                        id: preFramesInput
+                        anchors.fill: parent
+                        visible: false
+                        model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120"]  // 最大120
+                        onActivated: {
+                            captureManager.preFrameCount = parseInt(currentText)
+                        }
+
+                        function syncIndex() {
+                            var val = captureManager.preFrameCount
+                            if (val > 120) val = 120  // 限制最大120
+                            var valStr = val.toString()
+                            for (var i = 0; i < model.length; i++) {
+                                if (model[i] === valStr) { currentIndex = i; return; }
+                            }
+                            // 找最接近的值
+                            for (var j = model.length - 1; j >= 0; j--) {
+                                if (parseInt(model[j]) <= val) { currentIndex = j; return; }
+                            }
+                            currentIndex = 0
+                        }
+
+                        Component.onCompleted: syncIndex()
+
+                        Connections {
+                            target: captureManager
+                            function onPreFrameCountChanged() { preFramesInput.syncIndex() }
+                        }
+                    }
+                }
+
+                // 后（后抓拍张数）
+                Rectangle {
+                    width: postBtnLabel.width + 16
+                    height: 24
+                    radius: 8
+                    color: postBtnArea.containsMouse || postFramesInput.popup.visible ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: postBtnLabel
+                        anchors.centerIn: parent
+                        text: "后：" + (captureManager.postFrameCount >= 1000 ? "无限" : captureManager.postFrameCount)
+                        font.family: "PingFang HK"
+                        font.pixelSize: 14
+                        color: "#FAFAFA"
+                    }
+
+                    MouseArea {
+                        id: postBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: postFramesInput.popup.open()
+                        onWheel: function(wheel) {
+                            if (wheel.angleDelta.y > 0 && postFramesInput.currentIndex > 0) {
+                                postFramesInput.currentIndex--
+                            } else if (wheel.angleDelta.y < 0 && postFramesInput.currentIndex < postFramesInput.count - 1) {
+                                postFramesInput.currentIndex++
+                            }
+                            var text = postFramesInput.currentText
+                            captureManager.postFrameCount = (text === "无限") ? 1000 : parseInt(text)
+                        }
+                    }
+
+                    ComboBox {
+                        id: postFramesInput
+                        anchors.fill: parent
+                        visible: false
+                        model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120", "150", "180", "200", "240", "无限"]
+                        onActivated: {
+                            var text = currentText
+                            captureManager.postFrameCount = (text === "无限") ? 1000 : parseInt(text)
+                        }
+
+                        function syncIndex() {
+                            var val = captureManager.postFrameCount
+                            if (val >= 1000) { currentIndex = model.length - 1; return; }
+                            var valStr = val.toString()
+                            for (var i = 0; i < model.length; i++) {
+                                if (model[i] === valStr) { currentIndex = i; return; }
+                            }
+                            // 找最接近的值
+                            for (var j = model.length - 2; j >= 0; j--) {
+                                if (parseInt(model[j]) <= val) { currentIndex = j; return; }
+                            }
+                            currentIndex = 0
+                        }
+
+                        Component.onCompleted: syncIndex()
+
+                        Connections {
+                            target: captureManager
+                            function onPostFrameCountChanged() { postFramesInput.syncIndex() }
+                        }
+                    }
+                }
+                }
+
                 // ⭐ AI自动识别按钮（2026-06-24：按需求隐藏顶部菜单栏入口，功能为「敬请期待」占位，先不展示）
                 Rectangle {
                     visible: false
@@ -1505,303 +1867,22 @@ Rectangle {
                 //   livePanel 内 kernelPlayerLoader），不再需要顶部对比浮窗入口。
                 //   浮窗本体 kernelTestOverlay 暂保留但无入口触发（P2P 退场逻辑仍在），后续可清理。
 
-                // ⭐ 滚轮帧数（步长）显示：默认1，按 F5–F8 跟随 frameStep 变化
-                Rectangle {
-                    width: wheelStepText.width + 16
-                    height: 24
-                    radius: 4
-                    color: "#E8F5E9"
-                    border.color: "#A5D6A7"
-                    border.width: 1
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Text {
-                        id: wheelStepText
-                        anchors.centerIn: parent
-                        text: "滚轮帧数: " + mainPage.frameStep
-                        font.family: "PingFang HK"
-                        font.pixelSize: 12
-                        color: "#263238"
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        ToolTip.visible: containsMouse
-                        ToolTip.text: "F5=1 F6=2 F7=3 F8=4 帧"
-                        ToolTip.delay: 300
-                    }
-                }
+                // ⭐ 滚轮帧数显示已挪到底部状态栏右侧（对齐 java gstream 的 scrollFrameLabel 位置）
 
             }
             
             // 中间弹性空间
             Item { Layout.fillWidth: true }
-            
-            // ===== 右侧状态信息 =====
-            Row {
-                spacing: 16
-                height: 32
-                
-                // ⭐ 缓冲队列显示（已隐藏）
-                Row {
-                    spacing: 2
-                    height: parent.height
-                    visible: false  // 不再显示
-                    
-                    Text {
-                        text: gstPlayer.bufferSize + "/" + gstPlayer.bufferTarget
-                        font.family: "Consolas"
-                        font.pixelSize: 12
-                        font.bold: true
-                        // 颜色根据水位变化
-                        color: {
-                            var waterLevel = gstPlayer.bufferTarget > 0 ? gstPlayer.bufferSize / gstPlayer.bufferTarget : 1.0
-                            if (waterLevel < 0.15) return "#dd0000"       // 红 - 紧急
-                            else if (waterLevel < 0.35) return "#ff8800"  // 橙 - 恢复中
-                            else if (waterLevel > 1.05) return "#0066ff"  // 蓝 - 追帧
-                            else return "#00bb00"                         // 绿 - 正常
-                        }
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: "帧"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 10
-                        color: "#78909C"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                
-                // 分隔线（缓冲队列和FPS之间，已隐藏）
-                Rectangle { 
-                    width: 1; height: 14; color: "#A5D6A7"
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: false  // 跟随缓冲队列一起隐藏
-                }
-                
-                // ⭐ §53.2 设备在线灯：与「在不在推流 / 有没有画面」严格分开。
-                //   在线(绿) = 心跳新鲜；在线但没推流(橙) = 设备登录着但没开推流；离线(红) = 心跳断了。
-                //   排障口径：显示"在线"却没画面 → 问题在拉流/协商侧（本章 §53.3 两条根因），
-                //   不要再去查账号/绑定/网络是否登录。
-                Row {
-                    spacing: 4
-                    height: parent.height
-                    Rectangle {
-                        width: 7; height: 7; radius: 3.5
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: !mainPage.deviceOnline ? "#dd0000"
-                               : (mainPage.publishState === 1 ? "#00bb00" : "#ff8800")
-                    }
-                    // ⭐ 状态 + iOS 设备昵称两行显示（用户要求：第一次切进来在「设备在线」下换行显示昵称）
-                    Column {
-                        spacing: 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        Text {
-                            text: !mainPage.deviceOnline ? "设备离线"
-                                  : (mainPage.publishState === 1 ? "设备在线" : "在线·未推流")
-                            font.family: "PingFang HK"
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: !mainPage.deviceOnline ? "#dd0000"
-                                   : (mainPage.publishState === 1 ? "#00bb00" : "#ff8800")
-                        }
-                        // 设备昵称（只在有值时占位；灰色小字，不喧宾夺主）
-                        Text {
-                            visible: mainPage.pairedIosDisplay.length > 0
-                            text: mainPage.pairedIosDisplay
-                            font.family: "PingFang HK"
-                            font.pixelSize: 9
-                            color: "#90A4AE"
-                            elide: Text.ElideRight
-                            width: Math.min(implicitWidth, 96)
-                        }
-                    }
-                }
 
-                Rectangle {
-                    width: 1; height: 14; color: "#A5D6A7"
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                // FPS 显示
-                Row {
-                    spacing: 4
-                    height: parent.height
-                    Text {
-                        text: mainPage.connectMode === 1 ? "P2P" : (mainPage.connectMode === 2 ? "SRT" : "SRS")
-                        font.family: "Consolas"
-                        font.pixelSize: 10
-                        font.bold: true
-                        color: mainPage.connectMode === 1 ? "#4CAF50" : (mainPage.connectMode === 2 ? "#2196F3" : "#FF9800")
-                        anchors.verticalCenter: parent.verticalCenter
-                        // ⭐ §53.4.5：鼠标悬停显示设备端为什么选了这条线路/这个编码
-                        ToolTip.visible: connectReasonHover.hovered && mainPage.deviceConnectReason.length > 0
-                        ToolTip.text: "设备端决策：" + mainPage.deviceConnectReason
-                        HoverHandler { id: connectReasonHover }
-                    }
-                    // ⭐ P2P 连接阶段（切网重连过程常驻可见）：只在非「已连接」的过渡/异常态显示，避免正常播放时刷屏
-                    Text {
-                        id: p2pPhaseLabel
-                        text: mainPage.p2pPhaseText(gstPlayer.webrtcStatus)
-                        visible: mainPage.connectMode === 1 && text.length > 0
-                        font.family: "PingFang HK"
-                        font.pixelSize: 10
-                        font.bold: true
-                        color: mainPage.p2pPhaseColor(gstPlayer.webrtcStatus)
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: fpsRow.displayFps + ""
-                        font.family: "Consolas"
-                        font.pixelSize: 13
-                        font.bold: true
-                        // 颜色跟随网络质量变化
-                        color: {
-                            switch (mainPage.deviceNetworkQuality) {
-                                case "excellent": return "#00bb00"  // 绿
-                                case "good": return "#0066ff"       // 蓝
-                                case "fair": return "#ff8800"       // 橙
-                                case "poor": return "#dd0000"       // 红
-                                default: return "#78909C"           // 灰
-                            }
-                        }
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: "FPS"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 11
-                        color: "#546E7A"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                
-                // 分隔线
-                Rectangle { width: 1; height: 14; color: "#A5D6A7"; anchors.verticalCenter: parent.verticalCenter }
-                
-                // 码率显示 + 网络类型
-                Row {
-                    spacing: 4
-                    height: parent.height
-                    
-                    // ⭐ 网络质量颜色（码率和网络类型共用）
-                    property color networkColor: {
-                        switch (mainPage.deviceNetworkQuality) {
-                            case "excellent": return "#00bb00"  // 绿
-                            case "good": return "#0066ff"       // 蓝
-                            case "fair": return "#ff8800"       // 橙
-                            case "poor": return "#dd0000"       // 红
-                            default: return "#78909C"           // 灰
-                        }
-                    }
-                    
-                    Text {
-                        text: mainPage.deviceKbps > 0 ? (mainPage.deviceKbps * 2) : "0"  // ⭐ x2 显示
-                        font.family: "Consolas"
-                        font.pixelSize: 13
-                        font.bold: true
-                        color: parent.networkColor
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: "kb/s"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 11
-                        color: "#546E7A"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    // ⭐ 网络类型显示（颜色跟随码率）
-                    Text {
-                        text: mainPage.deviceNetworkType ? mainPage.deviceNetworkType : ""
-                        font.family: "PingFang HK"
-                        font.pixelSize: 11
-                        font.bold: true
-                        color: parent.networkColor
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: mainPage.deviceNetworkType !== ""
-                    }
-                }
-                
-                // 分隔线
-                Rectangle { width: 1; height: 14; color: "#A5D6A7"; anchors.verticalCenter: parent.verticalCenter }
-                
-                // 电量显示
-                Row {
-                    spacing: 4
-                    height: parent.height
-                    Text {
-                        text: mainPage.deviceBattery >= 0 ? mainPage.deviceBattery + "%" : "-"
-                        font.family: "Consolas"
-                        font.pixelSize: 13
-                        font.bold: true
-                        // 电量颜色：<20红色，20-50橙色，>50绿色
-                        color: {
-                            if (mainPage.deviceBattery < 0) return "#90A4AE"  // 未知灰色
-                            if (mainPage.deviceBattery < 20) return "#dd0000"  // 红色危险
-                            if (mainPage.deviceBattery <= 50) return "#ff8800"  // 橙色警告
-                            return "#00bb00"  // 绿色正常
-                        }
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        text: "电量"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 11
-                        color: "#546E7A"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-                
-                // 分隔线
-                Rectangle { width: 1; height: 14; color: "#A5D6A7"; anchors.verticalCenter: parent.verticalCenter }
-                
-                // 全屏按钮（替换原网络质量显示）
-                Rectangle {
-                    width: fullscreenBtnText.width + 16
-                    height: 22
-                    radius: 4
-                    color: fullscreenBtnArea.containsMouse ? "#C8E6C9" : "#E8F5E9"
-                    anchors.verticalCenter: parent.verticalCenter
-                    
-                    Text {
-                        id: fullscreenBtnText
-                        anchors.centerIn: parent
-                        text: (mainWindow.visibility === Window.Maximized || mainWindow.visibility === Window.FullScreen) ? "退出全屏" : "全屏"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 12
-                        font.bold: true
-                        color: "#263238"
-                    }
-                    
-                    MouseArea {
-                        id: fullscreenBtnArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (mainWindow.visibility === Window.Maximized || mainWindow.visibility === Window.FullScreen) {
-                                mainWindow.showNormal()
-                            } else {
-                                mainWindow.showMaximized()
-                            }
-                        }
-                    }
-                }
-            }
-            
-            Item { width: 8 }
-
-            // 版本号
+            // 版本号（⭐ 2026-08-14：顶部不再显示，代码保留）
             Text {
+                visible: false
                 text: "v" + AutoUpdater.currentVersion
                 font.family: "Consolas"
                 font.pixelSize: 11
                 color: "#78909C"
                 anchors.verticalCenter: parent.verticalCenter
             }
-
-            Item { width: 4 }
 
             // ===== 等级信息 + 到期天数（点击弹出版本说明）=====
             Text {
@@ -1827,10 +1908,10 @@ Rectangle {
                         var expDate2 = new Date(mainPage.pcExpireAt)
                         var now2 = new Date()
                         var days = Math.ceil((expDate2 - now2) / (1000 * 60 * 60 * 24))
-                        if (days <= 7) return "#D32F2F"
-                        if (days <= 30) return "#E65100"
+                        if (days <= 7) return "#EF5350"
+                        if (days <= 30) return "#FFB74D"
                     }
-                    return "#37474F"
+                    return "#CCCCCC"
                 }
                 anchors.verticalCenter: parent.verticalCenter
                 
@@ -1842,66 +1923,364 @@ Rectangle {
                     onClicked: versionCompareDialog.open()
                 }
             }
-            
-            // ===== 右侧头像（固定距离右边缘 10px）=====
-            Item { width: 8 }  // 状态栏与头像之间的间距
-            Rectangle {
-                width: 32
+
+            Item { width: 8 }
+
+            // ===== 右侧操作区（⭐ 2026-08-14 调整）：头像 | 全屏 | 最小化 | 关闭 =====
+            Row {
+                spacing: 12
                 height: 32
-                radius: 16
-                color: "#E8F5E9"
-                clip: true
                 
-                Image {
-                    anchors.fill: parent
-                    source: "images/avatar.png"
-                    fillMode: Image.PreserveAspectCrop
-                }
-                
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: avatarMenu.open()
-                }
-                
-                Menu {
-                    id: avatarMenu
-                    y: parent.height + 5
-                    width: 100
+                // ⭐ 2026-08-14：iOS 设备状态信息（在线/FPS/码率/电量/网络）已整体搬到底部状态栏
+                //   bottomStatusBar（对齐 java gstream 的底部布局），顶部只留 PC 端操作类按钮。
+
+                // 头像（放在全屏左边；最小化/关闭已移出菜单变成独立按钮）
+                Rectangle {
+                    width: 32
+                    height: 32
+                    radius: 16
+                    color: "transparent"
+                    clip: true
+                    anchors.verticalCenter: parent.verticalCenter
                     
-                    MenuItem {
-                        text: "切换账号"
-                        onTriggered: showSwitchAccountDialog()
+                    Image {
+                        anchors.fill: parent
+                        source: "images/head.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
                     }
-                    MenuItem {
-                        text: "修改登录密码"
-                        onTriggered: showChangeLoginPasswordDialog()
+                    
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: avatarMenu.open()
                     }
-                    MenuItem {
-                        text: "退出登录"
-                        onTriggered: handleLogout()
+                    
+                    Menu {
+                        id: avatarMenu
+                        y: parent.height + 5
+                        width: 110
+                        
+                        // ⭐ 2026-08-14 弹框样式对齐 java gstream
+                        background: Rectangle {
+                            implicitWidth: 110
+                            color: "#292929"
+                            radius: 8
+                            border.color: "#3A3A3A"
+                            border.width: 1
+                        }
+                        
+                        DarkMenuItem {
+                            text: "切换账号"
+                            onTriggered: showSwitchAccountDialog()
+                        }
+                        // ⭐ 2026-08-14：隐藏「修改登录密码」（代码保留，height=0 不占位）
+                        DarkMenuItem {
+                            text: "修改登录密码"
+                            visible: false
+                            height: 0
+                            onTriggered: showChangeLoginPasswordDialog()
+                        }
+                        DarkMenuItem {
+                            text: "退出登录"
+                            onTriggered: handleLogout()
+                        }
                     }
-                    MenuSeparator {}
-                    MenuItem {
-                        text: "最小化"
-                        onTriggered: mainWindow.showMinimized()
+                }
+
+                // ⭐ 2026-08-15 对齐老 java 标题栏（CameraMainUi.fxml）：最小化 bar.png /
+                //   最大化 max.png / 关闭 close.png，20x20 纯图标透明底按钮，文字按钮全部替换。
+                //   顺序也对齐老 java：最小化 | 全屏(最大化) | 关闭。
+
+                // 最小化
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: minBtnArea.containsMouse ? "#3A3A3A" : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: 20
+                        height: 20
+                        source: "images/bar.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
                     }
-                    MenuItem {
-                        text: "关闭"
-                        onTriggered: Qt.quit()
+
+                    MouseArea {
+                        id: minBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: mainWindow.showMinimized()
+                    }
+                }
+
+                // 全屏（最大化/还原）
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: fullscreenBtnArea.containsMouse ? "#3A3A3A" : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: 20
+                        height: 20
+                        source: "images/max.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
+
+                    MouseArea {
+                        id: fullscreenBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (mainWindow.visibility === Window.Maximized || mainWindow.visibility === Window.FullScreen) {
+                                mainWindow.showNormal()
+                            } else {
+                                mainWindow.showMaximized()
+                            }
+                        }
+                    }
+                }
+
+                // 关闭
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: closeBtnArea.containsMouse ? "#C62828" : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: 20
+                        height: 20
+                        source: "images/close.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
+
+                    MouseArea {
+                        id: closeBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Qt.quit()
                     }
                 }
             }
         }
     }
     
+    // ============ 底部状态栏 ============
+    // ⭐ 2026-08-14 对齐 java gstream：iOS 设备信息放底部左侧
+    //   条目照搬 java 端：监控设备 | 在线状态 | 网络质量+fps | 码率 | 电量 | 联网类型
+    //   配色同 java：底 #292929，文字 #CCCCCC 12px，网络质量绿色 #34C759
+    Rectangle {
+        id: bottomStatusBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 34
+        color: "#292929"
+
+        // 网络质量显示口径（excellent/good/fair/poor → 中文 + 颜色）
+        function qualityText(q) {
+            switch (q) {
+                case "excellent": return "优秀"
+                case "good": return "良好"
+                case "fair": return "一般"
+                case "poor": return "差"
+                default: return "未知"
+            }
+        }
+        function qualityColor(q) {
+            switch (q) {
+                case "excellent": return "#34C759"
+                case "good": return "#30B0C7"
+                case "fair": return "#FF9500"
+                case "poor": return "#FF3B30"
+                default: return "#8E8E93"
+            }
+        }
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 12
+
+            // 监控设备
+            Text {
+                text: "iOS(建议清晰度：50)"
+                font.family: "PingFang HK"
+                font.pixelSize: 12
+                color: "#CCCCCC"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Rectangle { width: 1; height: 10; color: "#4A4A4A"; anchors.verticalCenter: parent.verticalCenter }
+
+            // 在线状态 + 设备昵称
+            Row {
+                spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                Rectangle {
+                    width: 7; height: 7; radius: 3.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: !mainPage.deviceOnline ? "#FF3B30"
+                           : (mainPage.publishState === 1 ? "#34C759" : "#FF9500")
+                }
+                Text {
+                    text: !mainPage.deviceOnline ? "未上线"
+                          : (mainPage.publishState === 1 ? "在线中" : "在线·未推流")
+                    font.family: "PingFang HK"
+                    font.pixelSize: 12
+                    color: !mainPage.deviceOnline ? "#FF3B30"
+                           : (mainPage.publishState === 1 ? "#34C759" : "#FF9500")
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    visible: mainPage.pairedIosDisplay.length > 0
+                    text: mainPage.pairedIosDisplay
+                    font.family: "PingFang HK"
+                    font.pixelSize: 11
+                    color: "#8E8E93"
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, 120)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Rectangle { width: 1; height: 10; color: "#4A4A4A"; anchors.verticalCenter: parent.verticalCenter }
+
+            // 网络质量 + 线路 + fps
+            Row {
+                spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                    text: bottomStatusBar.qualityText(mainPage.deviceNetworkQuality)
+                    font.family: "PingFang HK"
+                    font.pixelSize: 12
+                    color: bottomStatusBar.qualityColor(mainPage.deviceNetworkQuality)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: mainPage.connectMode === 1 ? "P2P" : (mainPage.connectMode === 2 ? "SRT" : "SRS")
+                    font.family: "Consolas"
+                    font.pixelSize: 11
+                    font.bold: true
+                    color: mainPage.connectMode === 1 ? "#34C759" : (mainPage.connectMode === 2 ? "#30B0C7" : "#FF9500")
+                    anchors.verticalCenter: parent.verticalCenter
+                    // ⭐ §53.4.5：鼠标悬停显示设备端为什么选了这条线路/这个编码
+                    ToolTip.visible: connectReasonHover.hovered && mainPage.deviceConnectReason.length > 0
+                    ToolTip.text: "设备端决策：" + mainPage.deviceConnectReason
+                    HoverHandler { id: connectReasonHover }
+                }
+                // ⭐ P2P 连接阶段（切网重连过程常驻可见）：只在非「已连接」的过渡/异常态显示
+                Text {
+                    id: p2pPhaseLabel
+                    text: mainPage.p2pPhaseText(gstPlayer.webrtcStatus)
+                    visible: mainPage.connectMode === 1 && text.length > 0
+                    font.family: "PingFang HK"
+                    font.pixelSize: 11
+                    font.bold: true
+                    color: mainPage.p2pPhaseColor(gstPlayer.webrtcStatus)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: fpsRow.displayFps + "fps"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 12
+                    color: "#CCCCCC"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Rectangle { width: 1; height: 10; color: "#4A4A4A"; anchors.verticalCenter: parent.verticalCenter }
+
+            // 码率
+            Text {
+                text: (mainPage.deviceKbps > 0 ? (mainPage.deviceKbps * 2) : 0) + "kb/s"  // ⭐ x2 显示
+                font.family: "PingFang HK"
+                font.pixelSize: 12
+                color: "#CCCCCC"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Rectangle { width: 1; height: 10; color: "#4A4A4A"; anchors.verticalCenter: parent.verticalCenter }
+
+            // 电量
+            Text {
+                text: "电量 " + (mainPage.deviceBattery >= 0 ? mainPage.deviceBattery + "%" : "-")
+                font.family: "PingFang HK"
+                font.pixelSize: 12
+                // 电量颜色：<20红色，20-50橙色，>50正常
+                color: {
+                    if (mainPage.deviceBattery < 0) return "#CCCCCC"
+                    if (mainPage.deviceBattery < 20) return "#FF3B30"
+                    if (mainPage.deviceBattery <= 50) return "#FF9500"
+                    return "#CCCCCC"
+                }
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Rectangle { width: 1; height: 10; color: "#4A4A4A"; anchors.verticalCenter: parent.verticalCenter }
+
+            // 联网类型
+            Text {
+                text: mainPage.deviceNetworkType ? mainPage.deviceNetworkType : "-"
+                font.family: "PingFang HK"
+                font.pixelSize: 12
+                color: "#CCCCCC"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        // ⭐ 滚轮帧数（步长）显示：默认1，按 F5–F8 跟随 frameStep 变化
+        //   位置对齐 java gstream 的 scrollFrameLabel（底栏右侧）
+        Rectangle {
+            width: wheelStepText.width + 16
+            height: 24
+            radius: 8
+            color: "#1F1F1F"
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                id: wheelStepText
+                anchors.centerIn: parent
+                text: "滚轮帧数: " + mainPage.frameStep
+                font.family: "PingFang HK"
+                font.pixelSize: 12
+                color: "#FAFAFA"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                ToolTip.visible: containsMouse
+                ToolTip.text: "滚轮切帧步长"
+                ToolTip.delay: 300
+            }
+        }
+    }
+
     // ============ 主布局 ============
     SplitView {
         id: mainSplitView
         anchors.top: topMenuBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: bottomStatusBar.top
         anchors.margins: 8
         orientation: Qt.Horizontal
         
@@ -1998,7 +2377,9 @@ Rectangle {
                 Item {
                     id: rightTopHolder
                     SplitView.fillWidth: true
-                    SplitView.preferredHeight: 330
+                    // ⭐ 2026-08-14 首次进入实时流/慢放平分高度（原固定 330，多余空间全归慢放）；
+                    //   用户拖动后 SplitView 会接管该值，保存/恢复比例逻辑不受影响
+                    SplitView.preferredHeight: rightSplitView.height / 2
                     SplitView.minimumHeight: 150
                     
                     // ⭐ 监听高度变化，在用户拖动后自动保存比例
@@ -2021,12 +2402,14 @@ Rectangle {
             }
 
             // ----- 右侧第三部分容器（控制面板，固定位置）-----
+            // ⭐ 2026-08-14：行/列/预抓拍/后抓拍挪到顶部菜单栏后，面板只剩一排按钮，
+            //   高度从 216 压缩到 76（36 按钮 + 上下 20 边距），省出的空间归实时流/慢放
             Item {
                 id: rightBottomHolder
                 Layout.fillWidth: true
-                Layout.preferredHeight: 216
-                Layout.minimumHeight: 140
-                Layout.maximumHeight: 300
+                Layout.preferredHeight: 76
+                Layout.minimumHeight: 76
+                Layout.maximumHeight: 76
             }
         }
     }
@@ -2179,9 +2562,12 @@ Rectangle {
                             }
                         }
                         
-                        color: mainPage.panelBgColor  // 面板背景色（滑块可调）
-                        border.color: isSelected ? "#4CAF50" : (itemMouseArea.containsMouse ? "#81C784" : "#707070")  // 选中绿色，悬停浅绿，默认深灰
-                        border.width: isSelected ? 5 : (itemMouseArea.containsMouse ? 3 : 2)  // 选中加粗，悬停中等
+                        // ⭐ 2026-08-14 对齐老 Java：格子本体 #292929，格子间露出 #1F1F1F 底色缝当分割线；
+                        //   悬停边框用老 Java 皮肤的强调蓝 #607AFB——只有「有截图内容且鼠标悬停」才显示，
+                        //   空格子悬停不变色
+                        color: "#292929"
+                        border.color: (gridCell.hasData && itemMouseArea.containsMouse) ? "#607AFB" : "#1F1F1F"
+                        border.width: (gridCell.hasData && itemMouseArea.containsMouse) ? 2 : 1
                         radius: 4
 
                         // item 缩放属性（从抓拍时的 videoZoom 继承，之后用户可手动调整）
@@ -2425,8 +2811,9 @@ Rectangle {
                                 ensureFocusAndSelect()
                                 // ⭐ 刚发生过拖动平移：不触发切帧（左键用于平移放大图）
                                 if (itemMouseArea.panMoved) { itemMouseArea.panMoved = false; return }
-                                // ⭐ Shift+点击：打开该item所在列的列预览（原 Ctrl+点击, 让位给联动）
-                                if (mouse.modifiers & Qt.ShiftModifier && gridCell.hasData) {
+                                // ⭐ Shift+点击：打开该item所在列的列预览
+                                //   2026-08-14 需求：老 java gstream 没有列预览 → 不触发（false && 短路，代码保留）
+                                if (false && (mouse.modifiers & Qt.ShiftModifier) && gridCell.hasData) {
                                     var cols = captureManager.gridCols
                                     var displayIndex = index
                                     var displayCol
@@ -2619,36 +3006,44 @@ Rectangle {
                             Text {
                                 anchors.centerIn: parent
                                 text: gridCell.dataIndex + 1
-                                font.family: "PingFang HK"
-                                font.weight: Font.Medium
-                                font.pixelSize: 32
-                                color: "#90A4AE"
+                                // ⭐ 2026-08-14 对齐老 Java（GridLayoutManager.NUMBER_LABEL_STYLE）：#666666 36px 粗体
+                                font.bold: true
+                                font.pixelSize: 36
+                                color: "#666666"
                             }
                         }
                         
-                        // 左上角帧率数字（无背景，白色文字70%透明度）
-                        Text {
-                            id: frameIndexText
+                        // 左上角帧数数字：对齐老 Java（SnapshotPlayerView.statusLabel）——白色粗体 + 半透明黑底圆角
+                        Rectangle {
                             anchors.left: parent.left
                             anchors.top: parent.top
                             anchors.margins: 6
                             visible: gridCell.hasData && gridCell.totalFrames > 0
                             z: 1
-                            text: (gridCell.currentFrame + 1)  // 只显示当前帧数
-                            font.pixelSize: 10  // 字体增加4px（6 -> 10）
-                            font.bold: false
-                            color: "#B3FFFFFF"  // 白色，透明度70%（0xB3 ≈ 179 ≈ 70%）
+                            width: frameIndexText.width + 16   // 老 Java padding: 4 8
+                            height: frameIndexText.height + 8
+                            radius: 6
+                            color: "#33000000"  // rgba(0,0,0,0.2)
+                            Text {
+                                id: frameIndexText
+                                anchors.centerIn: parent
+                                text: (gridCell.currentFrame + 1)  // 只显示当前帧数
+                                font.pixelSize: 12
+                                font.bold: true
+                                color: "#FFFFFF"
+                            }
                         }
 
                         // ⭐ 2026-07-16：截图item——底部切帧进度条（贴底细条，只在鼠标悬停这一格时显示）。
                         //   拖动=只切这一张；Ctrl+拖动=广播给全 grid 同步切帧（跟 Ctrl+滚轮效果一致）。
+                        // ⭐ 2026-08-14 需求：截图里不再显示滑动条（代码保留，滚轮/左右键切帧不受影响）
                         Item {
                             id: gridFrameBar
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
                             height: 20  // ⭐ 2026-07-16：放大一倍（原 10）
-                            visible: gridCell.hasData && gridCell.totalFrames > 0 && gridCell.frameBarHovered
+                            visible: false  // 原：gridCell.hasData && gridCell.totalFrames > 0 && gridCell.frameBarHovered
                             z: 2
 
                             property int ctrlLastTarget: gridCell.currentFrame
@@ -2752,7 +3147,7 @@ Rectangle {
         Rectangle {
             id: livePanel
             anchors.fill: parent
-            color: mainPage.panelBgColor  // 面板背景色（滑块可调）
+            color: "#292929"  // ⭐ 对齐 java gstream 实时窗口色（element2_1）
             radius: 4
             
             // 用于追踪整个区域的hover状态
@@ -2786,7 +3181,10 @@ Rectangle {
                                    ? parent.height : parent.width
                             height: (mainPage.videoRotation === 90 || mainPage.videoRotation === 270) 
                                     ? parent.width : parent.height
-                            fillMode: VideoOutput.Stretch
+                            // ⭐ 2026-08-15 修「旋转画面变形」：原 Stretch 不保宽高比，
+                            //   90°/270° 时竖幅画面被强行拉满横向面板必定变形，
+                            //   0°/180° 在面板比例≠视频比例时也有轻度拉伸。改保比例留边。
+                            fillMode: VideoOutput.PreserveAspectFit
                             
                             // 设置变换原点为中心
                             x: parent.width / 2 - width / 2 + mainPage.videoOffsetX
@@ -2815,11 +3213,10 @@ Rectangle {
                         }
 
                         // ⭐ 右上角信息开关（默认隐藏统计面板，点击切换显示）
-                        // ⭐ 2026-07-15：改成两步——鼠标进入实时流画面才显示这个按钮（入口），
-                        //   点击按钮才展开下面的统计面板；不能鼠标一放上去就把一堆统计信息铺出来挡视线。
+                        // ⭐ 2026-08-14 aihj：老 java gstream 没有时时流统计面板 → 入口和面板一律隐藏（代码保留）
                         Rectangle {
                             id: gstStatsToggle
-                            visible: !mainPage.useWebEngineKernel && gstPlayer.playing && livePanel.isHovering
+                            visible: false
                             anchors.top: parent.top
                             anchors.right: parent.right
                             anchors.margins: 10
@@ -2995,7 +3392,7 @@ Rectangle {
                     Rectangle {
                         id: deviceStatusOverlay
                         anchors.fill: videoContainer
-                        color: mainPage.panelBgColor  // 面板背景色（滑块可调）
+                        color: "#292929"  // 跟实时窗口同色
                         z: 1  // 层级在noVideoOverlay之上，但在控制栏之下
                         visible: mainPage.deviceStatus !== ""
                         
@@ -3013,27 +3410,17 @@ Rectangle {
                     Rectangle {
                         id: noVideoOverlay
                         anchors.fill: videoContainer
-                        color: mainPage.panelBgColor  // 面板背景色（滑块可调）
+                        color: "#292929"  // 跟实时窗口同色
                         visible: mainPage.publishState !== 1 && mainPage.deviceStatus === ""
                         
-                        Column {
+                        // 2026-08-14 去掉图标只留文字；2026-08-15 字体放大 3 倍并加粗
+                        Text {
                             anchors.centerIn: parent
-                            spacing: 4
-
-                            Image {
-                                source: "images/zwtp.png"
-                                width: 108
-                                height: 108
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-
-                            Text {
-                                text: "暂无画面"
-                                font.family: "PingFang HK"
-                                font.pixelSize: 14
-                                color: mainPage.panelTextColor  // 文字色随面板调整
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
+                            text: "暂无画面"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 42
+                            font.bold: true
+                            color: mainPage.panelTextColor  // 文字色随面板调整
                         }
                     }
 
@@ -3178,13 +3565,14 @@ Rectangle {
                             spacing: 2
                             
                             Repeater {
+                                // ⭐ 2026-08-14 档位对齐 java gstream，只有四档（按 iOS 实采分辨率升序）：
+                                //   标清=low(640x480) / 高清=ultra(1280x720) / 超清=high(1440x1080) / 4K=p4k
+                                //   注意：iOS 端的 type 命名与分辨率不成正比（high 反而比 ultra 高），此处按实际分辨率对齐老 java 档位名
                                 model: [
-                                    { label: "超低网", type: "low" },
-                                    { label: "高清", type: "standard" },
+                                    { label: "标清", type: "low" },
+                                    { label: "高清", type: "ultra" },
                                     { label: "超清", type: "high" },
-                                    // ⭐ 2026-07-11：超高帧挪到倒数第二（超高清置于最后）
-                                    { label: "超高帧", type: "ultra" },
-                                    { label: "超高清", type: "p4k" }
+                                    { label: "4K", type: "p4k" }
                                     // 超快帧：暂不开放，已从档位列表隐藏
                                 ]
                                 
@@ -3201,7 +3589,7 @@ Rectangle {
                                         text: modelData.label
                                         font.pixelSize: 12
                                         font.family: "PingFang HK"
-                                        font.bold: parent.isActive
+                                        font.bold: true
                                         color: parent.accessible ? "#263238" : "#90A4AE"
                                     }
                                     
@@ -3237,6 +3625,49 @@ Rectangle {
                     }
                 }
                 
+                // ⭐ 2026-08-15 对焦快捷按钮（放在档位/分辨率后面）：
+                //   数值直接显示在按钮上（百分比），鼠标滚轮在按钮上滚动即可调节，不再弹滑条。
+                //   与「相机设定」弹框里的对焦同源（iosCameraSettingsPopup.focusValue），两边互相同步
+                Rectangle {
+                    id: focusQuickBtn
+                    width: 86
+                    height: 32
+                    radius: 4
+                    color: focusQuickArea.containsMouse ? "#C8E6C9" : "#80000000"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "对焦 " + Math.round(iosCameraSettingsPopup.focusValue * 100) + "%"
+                        font.pixelSize: 12
+                        font.family: "PingFang HK"
+                        font.bold: true
+                        color: focusQuickArea.containsMouse ? "#263238" : "#FFFFFF"
+                    }
+
+                    MouseArea {
+                        id: focusQuickArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        // 左键加、右键减（步长0.05），滚轮微调（步长0.01）
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: function(mouse) {
+                            var delta = mouse.button === Qt.LeftButton ? 0.05 : -0.05
+                            var nv = Math.max(0, Math.min(1, iosCameraSettingsPopup.focusValue + delta))
+                            iosCameraSettingsPopup.focusValue = nv
+                            HttpClient.updateFocusDistance(nv)
+                            sendConfigUpdate("focus", {"focus": nv})
+                        }
+                        onWheel: function(wheel) {
+                            var delta = wheel.angleDelta.y > 0 ? 0.01 : -0.01
+                            var nv = Math.max(0, Math.min(1, iosCameraSettingsPopup.focusValue + delta))
+                            iosCameraSettingsPopup.focusValue = nv
+                            HttpClient.updateFocusDistance(nv)
+                            sendConfigUpdate("focus", {"focus": nv})
+                        }
+                    }
+                }
+
                 // 镜头变倍按钮
                 Rectangle {
                     id: lensZoomButtonRect
@@ -3390,7 +3821,7 @@ Rectangle {
                                         text: modelData.label
                                         font.pixelSize: 12
                                         font.family: "PingFang HK"
-                                        font.bold: mainPage.videoMirrorMode === modelData.mode
+                                        font.bold: true
                                         color: "#263238"
                                     }
 
@@ -3661,7 +4092,8 @@ Rectangle {
                                    ? parent.height : parent.width
                             height: (mainPage.videoRotation === 90 || mainPage.videoRotation === 270) 
                                     ? parent.width : parent.height
-                            fillMode: VideoOutput.Stretch
+                            // ⭐ 2026-08-15 修「旋转画面变形」：同实时流，Stretch→保比例（理由见实时流处注释）
+                            fillMode: VideoOutput.PreserveAspectFit
                             visible: slowMotionPlayer.hasContent
                             
                             // ⭐ 满放跟随实时流 videoZoom, 通过 slowmoZoom/slowmoOffsetX/Y 同步
@@ -3760,12 +4192,8 @@ Rectangle {
 
                                 // ⭐ S+滚轮: 慢放独立局部放大 (鼠标位置为中心)
                                 //   - 跟实时流 videoZoom 解耦 — 实时流不会跟着缩放
-                                //   - pcActivationLevel < 2 不允许局部放大 (与"慢放跟随实时流缩放"老约束一致)
+                                //   - ⭐ 2026-08-14：PC 端已改单版本，去掉等级门槛
                                 if (mainPage.sKeyPressed) {
-                                    if (mainPage.pcActivationLevel < 2) {
-                                        console.log("🔒 慢放局部放大需要AI全能版")
-                                        return
-                                    }
                                     var oldZoom = mainPage.slowmoZoom
                                     var delta = wheel.angleDelta.y > 0 ? 0.2 : -0.2
                                     var newZoom = Math.max(1.0, Math.min(5.0, oldZoom + delta))
@@ -3806,26 +4234,15 @@ Rectangle {
                         }
                     }
 
-                    // 暂无图片（居中显示）
-                    Column {
+                    // 暂无图片（居中显示，2026-08-14 去掉图标只留文字；2026-08-15 字体放大 3 倍并加粗）
+                    Text {
                         anchors.centerIn: parent
-                        spacing: 4
                         visible: !slowMotionPlayer.hasContent
-
-                        Image {
-                            source: "images/zwtp.png"
-                            width: 108
-                            height: 108
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
-
-                        Text {
-                            text: "暂无图片"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 14
-                            color: "#90A4AE"
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
+                        text: "暂无图片"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 42
+                        font.bold: true
+                        color: "#90A4AE"
                     }
                     
             // 状态覆盖层（右上角，录制时显示）
@@ -3865,13 +4282,44 @@ Rectangle {
                     anchors.rightMargin: 16
                     spacing: 12
 
-                    // 帧数显示: 当前播放帧/已录制帧数
-                    Text {
-                        text: (slowMotionPlayer.currentFrame + 1) + "/" + slowMotionPlayer.recordedFrames
-                        font.family: "PingFang HK"
-                        font.pixelSize: 14
-                        color: "#FFFFFF"
-                        Layout.minimumWidth: 70
+                    // ⭐ 2026-08-15 需求：播放按钮和帧数计数位置对调（播放在左、计数在右）
+                    // 播放/暂停按钮
+                    Item {
+                        width: 72
+                        height: 32
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.topMargin: 2
+                            radius: 6
+                            color: "#30000000"
+                        }
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 30
+                            radius: 6
+                            color: playBtnArea.containsMouse ? "#3A3A3A" : "#292929"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: slowMotionPlayer.isPlaying ? "暂停(Q)" : "播放(Q)"
+                                font.family: "PingFang HK"
+                                font.weight: Font.Medium
+                                font.pixelSize: 13
+                                color: slowMotionPlayer.hasContent ? "#FAFAFA" : "#8E8E93"
+                            }
+
+                            MouseArea {
+                                id: playBtnArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: slowMotionPlayer.togglePlay()
+                            }
+                        }
                     }
 
                     // 进度条
@@ -3941,43 +4389,14 @@ Rectangle {
                         }
                     }
 
-                    // 播放/暂停按钮
-                    Item {
-                        width: 72
-                        height: 32
-
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.topMargin: 2
-                            radius: 6
-                            color: "#30000000"
-                        }
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            height: 30
-                            radius: 6
-                            color: playBtnArea.containsMouse ? "#A5D6A7" : "#E8F5E9"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: slowMotionPlayer.isPlaying ? "暂停(Q)" : "播放(Q)"
-                                font.family: "PingFang HK"
-                                font.weight: Font.Medium
-                                font.pixelSize: 13
-                                color: slowMotionPlayer.hasContent ? "#37474F" : "#90A4AE"
-                            }
-
-                            MouseArea {
-                                id: playBtnArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: slowMotionPlayer.togglePlay()
-                            }
-                        }
+                    // 帧数显示: 当前播放帧/已录制帧数（对调后放到右侧）
+                    Text {
+                        text: (slowMotionPlayer.currentFrame + 1) + "/" + slowMotionPlayer.recordedFrames
+                        font.family: "PingFang HK"
+                        font.pixelSize: 14
+                        color: "#FFFFFF"
+                        Layout.minimumWidth: 70
+                        horizontalAlignment: Text.AlignRight
                     }
                 }
             }
@@ -4041,8 +4460,8 @@ Rectangle {
                                 anchors.top: parent.top
                                 height: 34
                                 radius: 6
-                                color: slowmoBtnArea.containsMouse ? "#A5D6A7" : 
-                                       (slowMotionPlayer.isRecording ? "#E57373" : "#B2DFDB")
+                                color: slowmoBtnArea.containsMouse ? "#3A3A3A" : 
+                                       (slowMotionPlayer.isRecording ? "#E57373" : "#292929")
                                 
                                 Text {
                                     anchors.centerIn: parent
@@ -4050,7 +4469,7 @@ Rectangle {
                                     font.family: "PingFang HK"
                                     font.weight: Font.Medium
                                     font.pixelSize: 14
-                                    color: slowMotionPlayer.isRecording ? "#FFFFFF" : "#263238"
+                                    color: "#FAFAFA"
                                 }
                                 
                                 MouseArea {
@@ -4089,8 +4508,8 @@ Rectangle {
                                 anchors.top: parent.top
                                 height: 34
                                 radius: 6
-                                color: multiplierArea.containsMouse ? "#C8E6C9" : "#E8F5E9"
-                                border.color: "#A5D6A7"
+                                color: multiplierArea.containsMouse ? "#3A3A3A" : "#292929"
+                                border.color: "#3A3A3A"
                                 border.width: 1
                                 
                                 Text {
@@ -4099,7 +4518,7 @@ Rectangle {
                                     font.family: "PingFang HK"
                                     font.weight: Font.Medium
                                     font.pixelSize: 14
-                                    color: "#263238"
+                                    color: "#FAFAFA"
                                 }
                                 
                                 MouseArea {
@@ -4122,9 +4541,12 @@ Rectangle {
                                 }
                                 
                                 // 下拉弹出菜单
+                                // ⭐ 2026-08-15 修「倍数下拉往上盖住按钮」：按钮贴窗口底边，
+                                //   原 y: parent.height+4 想往下弹但放不下，被 Popup 钳回窗口内
+                                //   整个压在按钮上。改为明确锚定在按钮正上方，向上展开且不遮按钮。
                                 Popup {
                                     id: multiplierPopup
-                                    y: parent.height + 4
+                                    y: -height - 4
                                     width: parent.width
                                     height: Math.min(200, multiplierListView.contentHeight + 8)
                                     padding: 4
@@ -4233,7 +4655,7 @@ Rectangle {
                                 anchors.top: parent.top
                                 height: 34
                                 radius: 6
-                                color: slowmoClearBtnArea.containsMouse ? "#A5D6A7" : "#B2DFDB"
+                                color: slowmoClearBtnArea.containsMouse ? "#3A3A3A" : "#292929"
                                 
                                 Text {
                                     anchors.centerIn: parent
@@ -4241,7 +4663,7 @@ Rectangle {
                                     font.family: "PingFang HK"
                                     font.weight: Font.Medium
                                     font.pixelSize: 14
-                                    color: "#37474F"
+                                    color: "#FAFAFA"
                                 }
                                 
                                 MouseArea {
@@ -4275,7 +4697,7 @@ Rectangle {
                                 anchors.top: parent.top
                                 height: 34
                                 radius: 6
-                                color: captureClearBtnArea.containsMouse ? "#A5D6A7" : "#B2DFDB"
+                                color: captureClearBtnArea.containsMouse ? "#3A3A3A" : "#292929"
                                 
                                 Text {
                                     anchors.centerIn: parent
@@ -4283,7 +4705,7 @@ Rectangle {
                                     font.family: "PingFang HK"
                                     font.weight: Font.Medium
                                     font.pixelSize: 14
-                                    color: "#37474F"
+                                    color: "#FAFAFA"
                                 }
                                 
                                 MouseArea {
@@ -4299,455 +4721,7 @@ Rectangle {
                     
                     Item { Layout.fillHeight: true }
 
-                    // 抓拍模式（行、列）
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 12
-                        spacing: 40
-
-                        Text {
-                            text: "抓拍模式"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 14
-                            color: mainPage.panelTextColor  // 文字色随面板调整
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 24
-
-                            // 行
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 24
-
-                                Text {
-                                    text: "行"
-                                    font.family: "PingFang HK"
-                                    font.pixelSize: 14
-                                    color: mainPage.panelTextColor  // 文字色随面板调整
-                                }
-
-                                Item {
-                                    Layout.fillWidth: true
-                                    height: 22
-                                    
-                                    Text {
-                                        id: rowsText
-                                        anchors.left: parent.left
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: captureManager.gridRows.toString()
-                                        font.family: "PingFang HK"
-                                        font.pixelSize: 16
-                                        color: mainPage.panelTextColor  // 文字色随面板调整
-                                    }
-                                    
-                                    // 下拉三角
-                                    Item {
-                                        anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 16
-                                        height: 16
-                                        
-                                        Canvas {
-                                            anchors.centerIn: parent
-                                            width: 8
-                                            height: 5
-                                            onPaint: {
-                                                var ctx = getContext("2d")
-                                                ctx.fillStyle = "#FFFFFF"  // 白色三角（深灰面板）
-                                                ctx.beginPath()
-                                                ctx.moveTo(0, 0)
-                                                ctx.lineTo(8, 0)
-                                                ctx.lineTo(4, 5)
-                                                ctx.closePath()
-                                                ctx.fill()
-                                            }
-                                        }
-                                    }
-                                    
-                                    Rectangle {
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                        height: 1.4
-                                        color: "#A5D6A7"
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: rowsInput.popup.open()
-                                        onWheel: function(wheel) {
-                                            if (wheel.angleDelta.y > 0 && rowsInput.currentIndex > 0) {
-                                                rowsInput.currentIndex--
-                                            } else if (wheel.angleDelta.y < 0 && rowsInput.currentIndex < rowsInput.count - 1) {
-                                                rowsInput.currentIndex++
-                                            }
-                                            pendingRows = parseInt(rowsInput.currentText)
-                                            gridUpdateTimer.restart()
-                                        }
-                                    }
-                                    
-                                    ComboBox {
-                                        id: rowsInput
-                                        visible: false
-                                        model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-                                        currentIndex: captureManager.gridRows - 1
-                                        onActivated: captureManager.gridRows = parseInt(currentText)
-                                    }
-                                }
-                            }
-
-                            // 列
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 24
-
-                                Text {
-                                    text: "列"
-                                    font.family: "PingFang HK"
-                                    font.pixelSize: 14
-                                    color: mainPage.panelTextColor  // 文字色随面板调整
-                                }
-
-                                Item {
-                                    Layout.fillWidth: true
-                                    height: 22
-                                    
-                                    Text {
-                                        id: colsText
-                                        anchors.left: parent.left
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: captureManager.gridCols.toString()
-                                        font.family: "PingFang HK"
-                                        font.pixelSize: 16
-                                        color: mainPage.panelTextColor  // 文字色随面板调整
-                                    }
-                                    
-                                    // 下拉三角
-                                    Item {
-                                        anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 16
-                                        height: 16
-                                        
-                                        Canvas {
-                                            anchors.centerIn: parent
-                                            width: 8
-                                            height: 5
-                                            onPaint: {
-                                                var ctx = getContext("2d")
-                                                ctx.fillStyle = "#FFFFFF"  // 白色三角（深灰面板）
-                                                ctx.beginPath()
-                                                ctx.moveTo(0, 0)
-                                                ctx.lineTo(8, 0)
-                                                ctx.lineTo(4, 5)
-                                                ctx.closePath()
-                                                ctx.fill()
-                                            }
-                                        }
-                                    }
-                                    
-                                    Rectangle {
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                        height: 1.4
-                                        color: "#A5D6A7"
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: colsInput.popup.open()
-                                        onWheel: function(wheel) {
-                                            if (wheel.angleDelta.y > 0 && colsInput.currentIndex > 0) {
-                                                colsInput.currentIndex--
-                                            } else if (wheel.angleDelta.y < 0 && colsInput.currentIndex < colsInput.count - 1) {
-                                                colsInput.currentIndex++
-                                            }
-                                            pendingCols = parseInt(colsInput.currentText)
-                                            gridUpdateTimer.restart()
-                                        }
-                                    }
-                                    
-                                    ComboBox {
-                                        id: colsInput
-                                        visible: false
-                                        model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-                                        currentIndex: captureManager.gridCols - 1
-                                        onActivated: captureManager.gridCols = parseInt(currentText)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    Item { Layout.fillHeight: true }
-
-                    // 预抓拍张数、后抓拍张数
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 12
-                        spacing: 40
-
-                        // 预抓拍张数
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 24
-
-                            RowLayout {
-                                spacing: 4
-                                
-                                Rectangle {
-                                    width: 14
-                                    height: 14
-                                    radius: 4
-                                    color: preCaptureCheck.checked ? "#B2DFDB" : "transparent"
-                                    border.width: preCaptureCheck.checked ? 0 : 1
-                                    border.color: "#A5D6A7"
-                                    
-                                    // 勾选图标
-                                    Canvas {
-                                        anchors.centerIn: parent
-                                        width: 7
-                                        height: 5
-                                        visible: preCaptureCheck.checked
-                                        onPaint: {
-                                            var ctx = getContext("2d")
-                                            ctx.strokeStyle = "#E8F5E9"
-                                            ctx.lineWidth = 1.2
-                                            ctx.beginPath()
-                                            ctx.moveTo(0.5, 2.5)
-                                            ctx.lineTo(2.5, 4.5)
-                                            ctx.lineTo(6.5, 0.5)
-                                            ctx.stroke()
-                                        }
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: preCaptureCheck.checked = !preCaptureCheck.checked
-                                    }
-                                }
-                                
-                                Text {
-                                    text: "预抓拍张数"
-                                    font.family: "PingFang HK"
-                                    font.pixelSize: 14
-                                    color: mainPage.panelTextColor  // 文字色随面板调整
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: preCaptureCheck.checked = !preCaptureCheck.checked
-                                    }
-                                }
-                                
-                                CheckBox { id: preCaptureCheck; visible: false; checked: true }
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
-                                height: 22
-                                
-                                Text {
-                                    anchors.left: parent.left
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: captureManager.preFrameCount.toString()
-                                    font.family: "PingFang HK"
-                                    font.pixelSize: 16
-                                    color: preCaptureCheck.checked ? "#FFFFFF" : "#B0B0B0"  // 白色文字（深灰面板）
-                                }
-                                
-                                // 下拉三角
-                                Item {
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 16
-                                    height: 16
-                                    
-                                    Canvas {
-                                        anchors.centerIn: parent
-                                        width: 8
-                                        height: 5
-                                        onPaint: {
-                                            var ctx = getContext("2d")
-                                            ctx.fillStyle = "#FFFFFF"  // 白色三角（深灰面板）
-                                            ctx.beginPath()
-                                            ctx.moveTo(0, 0)
-                                            ctx.lineTo(8, 0)
-                                            ctx.lineTo(4, 5)
-                                            ctx.closePath()
-                                            ctx.fill()
-                                        }
-                                    }
-                                }
-                                
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.bottom: parent.bottom
-                                    height: 1.4
-                                    color: "#90A4AE"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: preCaptureCheck.checked
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: preFramesInput.popup.open()
-                                    onWheel: function(wheel) {
-                                        if (!preCaptureCheck.checked) return
-                                        if (wheel.angleDelta.y > 0 && preFramesInput.currentIndex > 0) {
-                                            preFramesInput.currentIndex--
-                                        } else if (wheel.angleDelta.y < 0 && preFramesInput.currentIndex < preFramesInput.count - 1) {
-                                            preFramesInput.currentIndex++
-                                        }
-                                        captureManager.preFrameCount = parseInt(preFramesInput.currentText)
-                                    }
-                                }
-                                
-                                ComboBox {
-                                    id: preFramesInput
-                                    visible: false
-                                    model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120"]  // 最大120
-                                    enabled: preCaptureCheck.checked
-                                    onActivated: {
-                                        captureManager.preFrameCount = parseInt(currentText)
-                                    }
-                                    
-                                    function syncIndex() {
-                                        var val = captureManager.preFrameCount
-                                        if (val > 120) val = 120  // 限制最大120
-                                        var valStr = val.toString()
-                                        for (var i = 0; i < model.length; i++) {
-                                            if (model[i] === valStr) { currentIndex = i; return; }
-                                        }
-                                        // 找最接近的值
-                                        for (var j = model.length - 1; j >= 0; j--) {
-                                            if (parseInt(model[j]) <= val) { currentIndex = j; return; }
-                                        }
-                                        currentIndex = 0
-                                    }
-                                    
-                                    Component.onCompleted: syncIndex()
-                                    
-                                    Connections {
-                                        target: captureManager
-                                        function onPreFrameCountChanged() { preFramesInput.syncIndex() }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 后抓拍张数
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 24
-
-                            Text {
-                                text: "后抓拍张数"
-                                font.family: "PingFang HK"
-                                font.pixelSize: 14
-                                color: mainPage.panelTextColor  // 文字色随面板调整
-                            }
-
-                            Item {
-                                Layout.fillWidth: true
-                                height: 22
-                                
-                                Text {
-                                    anchors.left: parent.left
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: captureManager.postFrameCount >= 1000 ? "无限" : captureManager.postFrameCount.toString()
-                                    font.family: "PingFang HK"
-                                    font.pixelSize: 16
-                                    color: mainPage.panelTextColor  // 文字色随面板调整
-                                }
-                                
-                                // 下拉三角
-                                Item {
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 16
-                                    height: 16
-                                    
-                                    Canvas {
-                                        anchors.centerIn: parent
-                                        width: 8
-                                        height: 5
-                                        onPaint: {
-                                            var ctx = getContext("2d")
-                                            ctx.fillStyle = "#FFFFFF"  // 白色三角（深灰面板）
-                                            ctx.beginPath()
-                                            ctx.moveTo(0, 0)
-                                            ctx.lineTo(8, 0)
-                                            ctx.lineTo(4, 5)
-                                            ctx.closePath()
-                                            ctx.fill()
-                                        }
-                                    }
-                                }
-                                
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.bottom: parent.bottom
-                                    height: 1.4
-                                    color: "#90A4AE"
-                                }
-                                
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: postFramesInput.popup.open()
-                                    onWheel: function(wheel) {
-                                        if (wheel.angleDelta.y > 0 && postFramesInput.currentIndex > 0) {
-                                            postFramesInput.currentIndex--
-                                        } else if (wheel.angleDelta.y < 0 && postFramesInput.currentIndex < postFramesInput.count - 1) {
-                                            postFramesInput.currentIndex++
-                                        }
-                                        var text = postFramesInput.currentText
-                                        captureManager.postFrameCount = (text === "无限") ? 1000 : parseInt(text)
-                                    }
-                                }
-                                
-                                ComboBox {
-                                    id: postFramesInput
-                                    visible: false
-                                    model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120", "150", "180", "200", "240", "无限"]
-                                    onActivated: {
-                                        var text = currentText
-                                        captureManager.postFrameCount = (text === "无限") ? 1000 : parseInt(text)
-                                    }
-                                    
-                                    function syncIndex() {
-                                        var val = captureManager.postFrameCount
-                                        if (val >= 1000) { currentIndex = model.length - 1; return; }
-                                        var valStr = val.toString()
-                                        for (var i = 0; i < model.length; i++) {
-                                            if (model[i] === valStr) { currentIndex = i; return; }
-                                        }
-                                        // 找最接近的值
-                                        for (var j = model.length - 2; j >= 0; j--) {
-                                            if (parseInt(model[j]) <= val) { currentIndex = j; return; }
-                                        }
-                                        currentIndex = 0
-                                    }
-                                    
-                                    Component.onCompleted: syncIndex()
-                                    
-                                    Connections {
-                                        target: captureManager
-                                        function onPostFrameCountChanged() { postFramesInput.syncIndex() }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // ⭐ 2026-08-14：行/列/预抓拍张数/后抓拍张数 4 个控件已挪到顶部菜单栏（对齐 java gstream）
                 }
         }
 
@@ -4876,32 +4850,35 @@ Rectangle {
         }
     }
 
-    // ⭐ F5/F6/F7/F8: 设置上下帧跳跃步长 (1/2/3/4 帧). 影响单 item / Ctrl 同步 / 列预览 / 全屏, 不影响慢放
-    Shortcut { sequence: "F5"; context: Qt.ApplicationShortcut; onActivated: { mainPage.frameStep = 1; console.log("F5: frameStep=1") } }
-    Shortcut { sequence: "F6"; context: Qt.ApplicationShortcut; onActivated: { mainPage.frameStep = 2; console.log("F6: frameStep=2") } }
-    Shortcut { sequence: "F7"; context: Qt.ApplicationShortcut; onActivated: { mainPage.frameStep = 3; console.log("F7: frameStep=3") } }
-    Shortcut { sequence: "F8"; context: Qt.ApplicationShortcut; onActivated: { mainPage.frameStep = 4; console.log("F8: frameStep=4") } }
+    // ⭐ F5/F6/F7/F8: 设置上下帧跳跃步长 (1/2/3/4 帧)
+    //   2026-08-14 需求：老 java gstream 没有该功能 → 不显示、不触发（enabled:false，代码保留）
+    Shortcut { sequence: "F5"; context: Qt.ApplicationShortcut; enabled: false; onActivated: { mainPage.frameStep = 1; console.log("F5: frameStep=1") } }
+    Shortcut { sequence: "F6"; context: Qt.ApplicationShortcut; enabled: false; onActivated: { mainPage.frameStep = 2; console.log("F6: frameStep=2") } }
+    Shortcut { sequence: "F7"; context: Qt.ApplicationShortcut; enabled: false; onActivated: { mainPage.frameStep = 3; console.log("F7: frameStep=3") } }
+    Shortcut { sequence: "F8"; context: Qt.ApplicationShortcut; enabled: false; onActivated: { mainPage.frameStep = 4; console.log("F8: frameStep=4") } }
 
     // 数字键1-9, 0：列预览（显示对应列的所有截图，0代表第10列）
-    Shortcut { sequence: "1"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(1) }
-    Shortcut { sequence: "2"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(2) }
-    Shortcut { sequence: "3"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(3) }
-    Shortcut { sequence: "4"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(4) }
-    Shortcut { sequence: "5"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(5) }
-    Shortcut { sequence: "6"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(6) }
-    Shortcut { sequence: "7"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(7) }
-    Shortcut { sequence: "8"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(8) }
-    Shortcut { sequence: "9"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(9) }
-    Shortcut { sequence: "0"; context: Qt.ApplicationShortcut; onActivated: toggleColumnPreview(10) }  // 0键 = 第10列
+    //   2026-08-14 需求：老 java gstream 没有列预览 → 不触发（enabled:false，代码保留）
+    Shortcut { sequence: "1"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(1) }
+    Shortcut { sequence: "2"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(2) }
+    Shortcut { sequence: "3"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(3) }
+    Shortcut { sequence: "4"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(4) }
+    Shortcut { sequence: "5"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(5) }
+    Shortcut { sequence: "6"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(6) }
+    Shortcut { sequence: "7"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(7) }
+    Shortcut { sequence: "8"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(8) }
+    Shortcut { sequence: "9"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(9) }
+    Shortcut { sequence: "0"; context: Qt.ApplicationShortcut; enabled: false; onActivated: toggleColumnPreview(10) }  // 0键 = 第10列
     
-    // Z/X键：列预览时切换上/下列
+    // Z/X键：列预览时切换上/下列（列预览已随 0-9 一起下线，不触发）
     Shortcut {
         sequence: "Z"; context: Qt.ApplicationShortcut
-        enabled: columnPreviewVisible  // ⭐ 仅列预览时占用Z；其它场景让位给"Z+左键拖动放大截图"
+        enabled: false
         onActivated: { if (columnPreviewVisible) columnPreviewPrevCol() }
     }
     Shortcut {
         sequence: "X"; context: Qt.ApplicationShortcut
+        enabled: false
         onActivated: { if (columnPreviewVisible) columnPreviewNextCol() }
     }
     
@@ -4924,11 +4901,10 @@ Rectangle {
                 return
             }
             // ⭐ 原有逻辑：全屏查看
+            // ⭐ 2026-08-14：PC 端已改单版本，去掉「AI全能版」等级门槛
             if (fullscreenViewerVisible) {
                 closeFullscreenViewer()
                 console.log("🔑 关闭放大查看")
-            } else if (mainPage.pcActivationLevel < 2) {
-                console.log("🔒 全屏放大需要AI全能版")
             } else if (captureManager.currentItemIndex >= 0 && captureManager.currentItemIndex < captureManager.count) {
                 fullscreenViewerMode = appSettings.halfScreenViewMode ? 1 : 0
                 console.log("🔑 打开抓拍放大查看, itemIndex:", captureManager.currentItemIndex, "模式:", appSettings.halfScreenViewMode ? "半屏" : "全屏")
@@ -5004,10 +4980,11 @@ Rectangle {
         }
     }
     
-    // P键：打开/关闭 iOS 滤镜弹框（替代旧的 PC 端曝光弹框）
+    // ⭐ P键弹框已禁用：不再弹出 iOS 滤镜弹框（快捷键整体关闭，enabled: false）
     Shortcut {
         sequence: "P"
         context: Qt.ApplicationShortcut
+        enabled: false
         onActivated: {
             if (iosFilterPopup.visible) {
                 iosFilterPopup.close()
@@ -5031,10 +5008,12 @@ Rectangle {
         }
     }
 
-    // ⭐ 第五十章 O键：打开/关闭「外接摄像头设定」（OTG 专用面板，与 R 的自带摄像头面板互不干扰）
+    // ⭐ 第五十章 O键：打开/关闭「外接摄像头设定」（OTG 专用面板）
+    //   2026-08-14 需求：单版本无 OTG、老 java gstream 没有 → 不触发（代码保留）
     Shortcut {
         sequence: "O"
         context: Qt.ApplicationShortcut
+        enabled: false
         onActivated: toggleOtgCameraPanel()
     }
 
@@ -5053,9 +5032,11 @@ Rectangle {
     //   （unsupportedOtgOverlay）。原下载引导弹框已移除（用户拍板：只提示「不支持」三个字）。
 
     // L键：打开/关闭 iOS 采集颜色调节（冷暖/绿紫/RGB/黑/白 → 硬件白平衡）
+    //   2026-08-14 需求：老 java gstream 没有 → 不触发（enabled:false，代码保留）
     Shortcut {
         sequence: "L"
         context: Qt.ApplicationShortcut
+        enabled: false
         onActivated: {
             if (iosCaptureAdjustPopup.visible) {
                 iosCaptureAdjustPopup.close()
@@ -5641,7 +5622,7 @@ Rectangle {
     Window {
         id: iosCameraSettingsPopup
         width: 560
-        height: 880
+        height: 800  // ⭐ 2026-08-14：新增「颜色参数精调」区（5 行滑块 + 标题），520 → 800
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         color: "transparent"
         visible: false
@@ -5655,10 +5636,7 @@ Rectangle {
             saturationValue = captureManager.saturation
 
             // ⭐ 显式设置滑块值（因为 onMoved 会打破绑定）
-            exposureBiasSlider.value = exposureValue
-            cameraBrightnessSlider.value = overallContrastValue           // 综合亮度-对比度
-            cameraFakeExposureSlider.value = overallExposureValue         // 综合亮度-曝光度
-            cameraSaturationSlider.value = iosFilterPopup.fSaturation     // 红外模式滑块 → iOS 滤镜的 saturation
+            isoSlider.value = hardwareBrightness
 
             visible = true
         }
@@ -5686,7 +5664,7 @@ Rectangle {
         property double lensZoom: 1.0
         property string directionValue: "1"  // 摄像头方向：1=后置, 0=前置
         property string selectedButton: ""  // 睡眠/工作/刷新
-        property string qualityType: "high" // 档位：low/standard/high/ultra/p4k
+        property string qualityType: "ultra" // 档位type：low(标清)/ultra(高清)/high(超清)/p4k(4K)；standard 为旧残留
         property bool antiFlickerEnabled: false  // 抗频闪开关（默认关闭）
         property int antiFlickerFps: 80          // 抗频闪帧率档位（80/100/200）
         property bool filterModeEnabled: false   // 滤镜模式（Metal 后处理，默认关 — 对标玉麒麟只开 LUT）
@@ -5698,13 +5676,49 @@ Rectangle {
             var kelvin = 2000 + (hardwareWhiteBalance / 100) * 6000
             return Math.round(kelvin) + "K"
         }
+
+        // ⭐ 2026-08-14 颜色参数精调：复用 iOS 滤镜链路下发（iOS 走 STOMP，Android 自动转 PC 本地滤镜）。
+        //   滤镜值只有在 filterEnabled 打开时才生效（P 键弹框已禁用，这里首次调整时自动打开）。
+        //   ⚠ 首次开启必须全量下发一遍所有滤镜参数——只发单个参数的话，设备端其它参数
+        //   （blackPoint/sharpness 等）会以不可控的旧值一起生效，画面会突变。
+        function pushColorParam(ptype, val) {
+            if (!iosFilterPopup.fEnabled) {
+                iosFilterPopup.fEnabled = true
+                iosFilterPopup.pushParam("filterEnabled", true)
+                iosFilterPopup.pushParam("brightness",    iosFilterPopup.fBrightness)
+                iosFilterPopup.pushParam("contrast",      iosFilterPopup.fContrast)
+                iosFilterPopup.pushParam("saturation",    iosFilterPopup.fSaturation)
+                iosFilterPopup.pushParam("redBoost",      iosFilterPopup.fRedBoost)
+                iosFilterPopup.pushParam("gamma",         iosFilterPopup.fGamma)
+                iosFilterPopup.pushParam("exposure",      Math.log2(iosFilterPopup.fExposure))
+                iosFilterPopup.pushParam("blackPoint",    iosFilterPopup.fBlackPoint)
+                iosFilterPopup.pushParam("sharpness",     iosFilterPopup.fSharpness)
+                iosFilterPopup.pushParam("highlightLift", iosFilterPopup.fHighlightLift)
+                iosFilterPopup.pushParam("chroma",        iosFilterPopup.fChroma)
+                console.log("🎨 颜色精调：自动开启滤镜链路（全量下发一遍参数）")
+            }
+            iosFilterPopup.pushParam(ptype, val)
+        }
+
+        // ⭐ 颜色参数精调「还原」：关闭滤镜链路 → 设备回到未加滤镜的原图（这才是真正的还原），
+        //   同时把 5 个参数值重置回默认，下次再调时从默认值起步。
+        function resetColorTune() {
+            iosFilterPopup.fBrightness = iosFilterPopup.brightnessDefault
+            iosFilterPopup.fSaturation = iosFilterPopup.saturationDefault
+            iosFilterPopup.fContrast   = iosFilterPopup.contrastDefault
+            iosFilterPopup.fChroma     = iosFilterPopup.chromaDefault
+            iosFilterPopup.fGamma      = iosFilterPopup.gammaDefault
+            iosFilterPopup.fEnabled    = false
+            iosFilterPopup.pushParam("filterEnabled", false)
+            console.log("🎨 颜色参数精调已还原：关闭滤镜链路，画面回到原图")
+        }
         
-        // 窗口内容背景
+        // 窗口内容背景 ⭐ 深色主题（对齐参考截图风格）
         Rectangle {
             anchors.fill: parent
-            color: "#FFFFFF"
-            radius: 4
-            border.color: "#A5D6A7"
+            color: "#151A24"
+            radius: 14
+            border.color: "#262C3A"
             border.width: 1
         
             ColumnLayout {
@@ -5712,7 +5726,7 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 24
                 
-                // 拖动区域（标题栏）
+                // 拖动区域（标题栏：📷 相机设定 + 复位按钮 + 关闭按钮）
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 40
@@ -5747,164 +5761,109 @@ Rectangle {
                             iosCameraSettingsPopup.dragging = false
                         }
                     }
-                    
-                    // 还原按钮（重置综合亮度为默认值20）
-                    Rectangle {
-                        id: cameraResetBtn
-                        anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: resetBtnText.width + 20
-                        height: 28
-                        radius: 6
-                        color: resetBtnArea.containsMouse ? "#C8E6C9" : "#E8F5E9"
-                        border.color: "#A5D6A7"
-                        border.width: 1
-                        
-                        Text {
-                            id: resetBtnText
-                            anchors.centerIn: parent
-                            text: "还原"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 14
-                            color: "#263238"
-                        }
-                        
-                        MouseArea {
-                            id: resetBtnArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                // 对焦：0.6
-                                iosCameraSettingsPopup.focusValue = 0.6
-                                focusSlider.value = 0.6
 
-                                // 拉后台默认值 → applyServerDefaults 写 f*，反算综亮/综对/综曝，1s 统一下发 pushAllStomp
-                                iosFilterPopup.restorePushPending = true
-                                HttpClient.getIosFilterDefaults()
-
-                                // 清晰度：50
-                                iosCameraSettingsPopup.clarityValue = 50
-                                claritySlider.value = 50
-
-                                // 超级帧率：还原到后台配置的默认值（按平台，未配置=120）
-                                var flickerDefault = shutterCfg["default"]
-                                iosCameraSettingsPopup.flickerValue = flickerDefault
-                                flickerSlider.value = flickerDefault
-
-                                // 帧率：100
-                                iosCameraSettingsPopup.fpsValue = 100
-                                fpsSlider.value = 100
-
-                                // 抗频闪：打开过就关闭
-                                if (iosCameraSettingsPopup.antiFlickerEnabled) {
-                                    iosCameraSettingsPopup.antiFlickerEnabled = false
-                                    iosCameraSettingsPopup.antiFlickerFps = 80
-                                    sendAntiFlickerConfig()
-                                }
-
-                                // 下发硬件配置
-                                HttpClient.updateFocusDistance(0.6)
-                                sendConfigUpdate("focus", {"focus": 0.6})
-                                HttpClient.updateFlicker(flickerDefault)
-                                sendConfigUpdate("cjfps", {"cjfps": flickerDefault})
-                                var resetSendFps = resolveSendFps(100)
-                                HttpClient.updateFps(resetSendFps)
-                                sendConfigUpdate("fps", {"fps": resetSendFps})
-
-                                console.log("🔄 相机设定已还原（滤镜/LUT/硬件 1s 后统一下发）")
-                            }
-                        }
-                    }
-
-                    // ⭐ 2026-07-14：低功率/高功率采集切换（还原按钮右侧）。
-                    //   仅 iOS 生效（iOS 收到后自行判断，钉死采集30fps）；Android 已固定低功率，不受此开关影响。
-                    //   两段式胶囊按钮，与本文件"高配电脑/低端电脑"内核选择同款样式。
+                    // 标题：📷 相机设定 + 复位按钮（紧跟标题后面）
                     Row {
-                        id: lowPowerToggle
-                        anchors.left: cameraResetBtn.right
-                        anchors.leftMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        height: 28
-                        spacing: 0
+                        anchors.left: parent.left
+                        spacing: 10
+                        Text {
+                            text: "📷"
+                            font.pixelSize: 18
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: "相机设定"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 17
+                            font.bold: true
+                            color: "#ECEFF4"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
 
+                        // 复位按钮（原"还原"，重置相机设定为默认值；紧跟标题文字后面）
                         Rectangle {
-                            width: 60; height: 28
+                            id: cameraResetBtn
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: resetBtnText.width + 20
+                            height: 28
                             radius: 6
-                            color: !appSettings.iosLowPowerCapture ? "#3993D2" : "#E8F5E9"
-                            border.color: !appSettings.iosLowPowerCapture ? "#3993D2" : "#A5D6A7"
+                            color: resetBtnArea.containsMouse ? "#232B38" : "#1B2330"
+                            border.color: "#333B4A"
                             border.width: 1
+                            
                             Text {
+                                id: resetBtnText
                                 anchors.centerIn: parent
-                                text: "高功率"
+                                text: "复位"
                                 font.family: "PingFang HK"
-                                font.pixelSize: 12
-                                color: !appSettings.iosLowPowerCapture ? "#FFFFFF" : "#263238"
+                                font.pixelSize: 14
+                                color: "#7ED2FF"
                             }
+                            
                             MouseArea {
+                                id: resetBtnArea
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    if (appSettings.iosLowPowerCapture) {
-                                        appSettings.iosLowPowerCapture = false
-                                        sendConfigUpdate("lowPowerCapture", {"lowPowerCapture": false})
-                                        console.log("🔋 iOS 采集切换 → 高功率(60fps，按档位)")
+                                    // 对焦：0.6
+                                    iosCameraSettingsPopup.focusValue = 0.6
+                                    focusSlider.value = 0.6
+
+                                    // 拉后台默认值 → applyServerDefaults 写 f*，反算综亮/综对/综曝，1s 统一下发 pushAllStomp
+                                    iosFilterPopup.restorePushPending = true
+                                    HttpClient.getIosFilterDefaults()
+
+                                    // 清晰度：50
+                                    iosCameraSettingsPopup.clarityValue = 50
+                                    claritySlider.value = 50
+
+                                    // 快门：还原到后台配置的默认值（按平台，未配置=120）
+                                    var flickerDefault = shutterCfg["default"]
+                                    iosCameraSettingsPopup.flickerValue = flickerDefault
+                                    flickerSlider.value = flickerDefault
+
+                                    // 帧率：100
+                                    iosCameraSettingsPopup.fpsValue = 100
+                                    fpsSlider.value = 100
+
+                                    // 抗频闪：打开过就关闭
+                                    if (iosCameraSettingsPopup.antiFlickerEnabled) {
+                                        iosCameraSettingsPopup.antiFlickerEnabled = false
+                                        iosCameraSettingsPopup.antiFlickerFps = 80
+                                        sendAntiFlickerConfig()
                                     }
+
+                                    // 下发硬件配置
+                                    HttpClient.updateFocusDistance(0.6)
+                                    sendConfigUpdate("focus", {"focus": 0.6})
+                                    HttpClient.updateFlicker(flickerDefault)
+                                    sendConfigUpdate("cjfps", {"cjfps": flickerDefault})
+                                    var resetSendFps = resolveSendFps(100)
+                                    HttpClient.updateFps(resetSendFps)
+                                    sendConfigUpdate("fps", {"fps": resetSendFps})
+
+                                    console.log("🔄 相机设定已复位（滤镜/LUT/硬件 1s 后统一下发）")
                                 }
                             }
                         }
-                        Rectangle {
-                            width: 60; height: 28
-                            radius: 6
-                            color: appSettings.iosLowPowerCapture ? "#3993D2" : "#E8F5E9"
-                            border.color: appSettings.iosLowPowerCapture ? "#3993D2" : "#A5D6A7"
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "低功率"
-                                font.family: "PingFang HK"
-                                font.pixelSize: 12
-                                color: appSettings.iosLowPowerCapture ? "#FFFFFF" : "#263238"
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (!appSettings.iosLowPowerCapture) {
-                                        appSettings.iosLowPowerCapture = true
-                                        sendConfigUpdate("lowPowerCapture", {"lowPowerCapture": true})
-                                        console.log("🔋 iOS 采集切换 → 低功率(钉30fps)")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ⭐ 2026-07-19：高低功率按钮右侧红色提示
-                    Text {
-                        anchors.left: lowPowerToggle.right
-                        anchors.leftMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "高功率画质佳续航短略微发热"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 12
-                        color: "#FF0000"
                     }
 
                     // 关闭按钮
                     Rectangle {
-                        anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
+                        anchors.right: parent.right
                         width: 24
                         height: 24
                         radius: 12
-                        color: closeBtn.containsMouse ? "#C8E6C9" : "transparent"
+                        color: closeBtn.containsMouse ? "#232B38" : "transparent"
                         
                         Text {
                             anchors.centerIn: parent
                             text: "✕"
                             font.pixelSize: 14
-                            color: "#546E7A"
+                            color: "#C7D0DC"
                         }
                         
                         MouseArea {
@@ -5917,26 +5876,15 @@ Rectangle {
                     }
                 }
             
-            // ⭐ 红色提示文字
-            Text {
-                Layout.fillWidth: true
-                text: "网络波动大请先降低：清晰度 → 分辨率 → 帧率"
-                font.family: "PingFang HK"
-                font.pixelSize: 24
-                font.bold: true
-                color: "#FF0000"
-                horizontalAlignment: Text.AlignHCenter
-            }
-            
             // 第1行：对焦
             Column {
                 Layout.fillWidth: true
                 spacing: 2
                 Text {
-                    text: "数值越大远距离图像清楚，数值越小近距离图像清楚"
+                    text: "向右拖动对焦点变远，向左拖动对焦点变近，请按实际拍摄距离调整"
                     font.family: "PingFang HK"
-                    font.pixelSize: 15
-                    color: "#FF0000"
+                    font.pixelSize: 13
+                    color: "#6FD1FF"
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
             RowLayout {
@@ -5947,7 +5895,7 @@ Rectangle {
                     text: "对焦"
                     font.family: "PingFang HK"
                     font.pixelSize: 16
-                    color: "#263238"
+                    color: "#ECEFF4"
                     Layout.preferredWidth: 60
                 }
                 
@@ -5972,13 +5920,13 @@ Rectangle {
                         width: focusSlider.availableWidth
                         height: 4
                         radius: 999
-                        color: "#C8E6C9"
+                        color: "#232A38"
                         
                         Rectangle {
                             width: focusSlider.visualPosition * parent.width
                             height: parent.height
                             radius: 999
-                            color: "#4DB6AC"
+                            color: "#3EA6FF"
                         }
                     }
                     
@@ -5990,7 +5938,7 @@ Rectangle {
                         width: 14
                         height: 14
                         radius: 7
-                        color: "#4DB6AC"
+                        color: "#FFFFFF"
                     }
                     
                     // ⭐ 鼠标滚轮支持
@@ -6013,114 +5961,115 @@ Rectangle {
                     text: iosCameraSettingsPopup.focusValue.toFixed(2)
                     font.family: "PingFang HK"
                     font.pixelSize: 16
-                    color: "#263238"
+                    color: "#ECEFF4"
                     Layout.preferredWidth: 40
                 }
             }
             }
             
-            // 第2行：清晰度
+            // 第2行：ISO（电信号放大增益；对齐 P 键弹框里的「增益(G)」，与清晰度换位挪到这里，简化版不带联动分组 UI）
             Column {
                 Layout.fillWidth: true
                 spacing: 2
+
                 Text {
-                    text: "数值越高图片像素越高，对网速要求越高，建议远距离使用"
+                    text: "感光度(ISO) 越高感光越强、暗光下更亮但噪点增多；越低画面更干净但依赖光线充足"
                     font.family: "PingFang HK"
-                    font.pixelSize: 15
-                    color: "#FF0000"
+                    font.pixelSize: 13
+                    color: "#6FD1FF"
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
+
             RowLayout {
                 width: parent.width
                 spacing: 10
                 
                 Text {
-                    text: "清晰度"
+                    // ⭐ 2026-08-15 需求：ISO 显示为中文名称
+                    text: "感光度"
                     font.family: "PingFang HK"
                     font.pixelSize: 16
-                    color: "#263238"
+                    color: "#ECEFF4"
                     Layout.preferredWidth: 60
                 }
                 
                 Slider {
-                    id: claritySlider
+                    id: isoSlider
                     Layout.fillWidth: true
-                    from: 0
-                    to: 100
-                    stepSize: 1
-                    value: iosCameraSettingsPopup.clarityValue
-                    onMoved: iosCameraSettingsPopup.clarityValue = value
+                    from: iosFilterPopup.gainFrom
+                    to: iosFilterPopup.gainTo
+                    stepSize: iosFilterPopup.gainStep
+                    value: iosCameraSettingsPopup.hardwareBrightness
+                    onMoved: iosCameraSettingsPopup.hardwareBrightness = value
                     onPressedChanged: if (!pressed) {
-                        HttpClient.updateClarity(value)
-                        sendConfigUpdate("bitrate", {"bitrate": value})
+                        sendTestBrightnessConfig(value)
                     }
                     
                     background: Rectangle {
-                        x: claritySlider.leftPadding
-                        y: claritySlider.topPadding + claritySlider.availableHeight / 2 - height / 2
+                        x: isoSlider.leftPadding
+                        y: isoSlider.topPadding + isoSlider.availableHeight / 2 - height / 2
                         implicitWidth: 200
                         implicitHeight: 4
-                        width: claritySlider.availableWidth
+                        width: isoSlider.availableWidth
                         height: 4
                         radius: 999
-                        color: "#C8E6C9"
+                        color: "#232A38"
                         
                         Rectangle {
-                            width: claritySlider.visualPosition * parent.width
+                            width: isoSlider.visualPosition * parent.width
                             height: parent.height
                             radius: 999
-                            color: "#4DB6AC"
+                            color: "#3EA6FF"
                         }
                     }
                     
                     handle: Rectangle {
-                        x: claritySlider.leftPadding + claritySlider.visualPosition * (claritySlider.availableWidth - width)
-                        y: claritySlider.topPadding + claritySlider.availableHeight / 2 - height / 2
+                        x: isoSlider.leftPadding + isoSlider.visualPosition * (isoSlider.availableWidth - width)
+                        y: isoSlider.topPadding + isoSlider.availableHeight / 2 - height / 2
                         implicitWidth: 14
                         implicitHeight: 14
                         width: 14
                         height: 14
                         radius: 7
-                        color: "#4DB6AC"
+                        color: "#FFFFFF"
                     }
                     
-                    // ⭐ 鼠标滚轮支持
+                    // ⭐ 鼠标滚轮支持 — ISO
                     MouseArea {
                         anchors.fill: parent
                         acceptedButtons: Qt.NoButton
                         onWheel: function(wheel) {
-                            var delta = wheel.angleDelta.y > 0 ? claritySlider.stepSize : -claritySlider.stepSize
-                            var newValue = claritySlider.value + delta
-                            newValue = Math.max(claritySlider.from, Math.min(claritySlider.to, newValue))
-                            claritySlider.value = newValue
-                            iosCameraSettingsPopup.clarityValue = newValue
-                            HttpClient.updateClarity(newValue)
-                            sendConfigUpdate("bitrate", {"bitrate": newValue})
+                            var delta = wheel.angleDelta.y > 0 ? isoSlider.stepSize : -isoSlider.stepSize
+                            var newValue = isoSlider.value + delta
+                            newValue = Math.max(isoSlider.from, Math.min(isoSlider.to, newValue))
+                            isoSlider.value = newValue
+                            iosCameraSettingsPopup.hardwareBrightness = newValue
+                            sendTestBrightnessConfig(newValue)
                         }
                     }
                 }
                 
                 Text {
-                    text: iosCameraSettingsPopup.clarityValue
+                    text: Math.round(iosCameraSettingsPopup.hardwareBrightness)
                     font.family: "PingFang HK"
                     font.pixelSize: 16
-                    color: "#263238"
+                    color: "#ECEFF4"
                     Layout.preferredWidth: 40
                 }
             }
             }
-            
-            // 第3行：帧率（原第4行，顺序互换）
+
+            // 第3行：帧率
             Column {
                 Layout.fillWidth: true
                 spacing: 2
                 
                 // 说明文字（居中在滑块上方）
                 Text {
-                    text: "数值越高每秒钟看到图片张数越多，对网速要求越高"
+                    text: "帧率越高画面越流畅连贯，但更消耗网络带宽，网络不佳时建议调低"
                     font.family: "PingFang HK"
-                    font.pixelSize: 15
-                    color: "#FF0000"
+                    font.pixelSize: 13
+                    color: "#6FD1FF"
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
                 
@@ -6133,7 +6082,7 @@ Rectangle {
                         text: "帧率"
                         font.family: "PingFang HK"
                         font.pixelSize: 16
-                        color: "#263238"
+                        color: "#ECEFF4"
                         Layout.preferredWidth: 60
                     }
                     
@@ -6176,13 +6125,13 @@ Rectangle {
                             width: fpsSlider.availableWidth
                             height: 4
                             radius: 999
-                            color: "#C8E6C9"
+                            color: "#232A38"
                             
                             Rectangle {
                                 width: fpsSlider.visualPosition * parent.width
                                 height: parent.height
                                 radius: 999
-                                color: "#4DB6AC"
+                                color: "#3EA6FF"
                             }
                         }
                         
@@ -6194,7 +6143,7 @@ Rectangle {
                             width: 14
                             height: 14
                             radius: 7
-                            color: "#4DB6AC"
+                            color: "#FFFFFF"
                         }
                         
                         // ⭐ 鼠标滚轮支持
@@ -6222,39 +6171,27 @@ Rectangle {
                         text: iosCameraSettingsPopup.fpsValue
                         font.family: "PingFang HK"
                         font.pixelSize: 16
-                        color: "#263238"
+                        color: "#ECEFF4"
                         Layout.preferredWidth: 40
                     }
                 }
             }
             
-            // 第4行：超级帧率（原第3行，顺序互换）
+            // 第4行：快门（原"超级帧率"改名，取消说明文字）
             Column {
                 Layout.fillWidth: true
                 spacing: 2
 
-                // 说明文字（2行，居中在滑块上方）
-                Text {
-                    width: parent.width
-                    text: "不影响网速，数值越高每张图片拖影越小画面越暗\n超过光速会看到光闪，建议配合亮度使用"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 15
-                    color: "#FF0000"
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-                
                 // 标签 + 滑块 + 数值
                 RowLayout {
                     width: parent.width
                     spacing: 10
                     
                     Text {
-                        text: "超级帧率"
+                        text: "快门"
                         font.family: "PingFang HK"
                         font.pixelSize: 16
-                        color: "#263238"
+                        color: "#ECEFF4"
                         Layout.preferredWidth: 60
                     }
                     
@@ -6292,13 +6229,13 @@ Rectangle {
                             width: flickerSlider.availableWidth
                             height: 4
                             radius: 999
-                            color: "#C8E6C9"
+                            color: "#232A38"
                             
                             Rectangle {
                                 width: flickerSlider.visualPosition * parent.width
                                 height: parent.height
                                 radius: 999
-                                color: "#4DB6AC"
+                                color: "#3EA6FF"
                             }
                         }
                         
@@ -6310,7 +6247,7 @@ Rectangle {
                             width: 14
                             height: 14
                             radius: 7
-                            color: "#4DB6AC"
+                            color: "#FFFFFF"
                         }
                         
                         // ⭐ 鼠标滚轮支持
@@ -6335,663 +6272,528 @@ Rectangle {
                         text: iosCameraSettingsPopup.flickerValue
                         font.family: "PingFang HK"
                         font.pixelSize: 16
-                        color: "#263238"
+                        color: "#ECEFF4"
                         Layout.preferredWidth: 40
                     }
                 }
             }
             
-            // 第5行：综合亮度
-            RowLayout {
+            // 第5行：清晰度（与 ISO 换位挪到这里）
+            Column {
                 Layout.fillWidth: true
-                spacing: 10
-                
+                spacing: 2
                 Text {
-                    text: "综合亮度"
+                    text: "清晰度越高细节越丰富，同样更吃网速，远距离监控建议调高一些"
                     font.family: "PingFang HK"
-                    font.pixelSize: 16
-                    color: "#263238"
-                    Layout.preferredWidth: 60
-                }
-                
-                Slider {
-                    id: exposureBiasSlider
-                    Layout.fillWidth: true
-                    from: 0
-                    to: 100
-                    stepSize: 1
-                    value: iosCameraSettingsPopup.exposureValue
-                    // ⭐ 综合亮度 = 联动驱动 iOS 滤镜的 brightness + gamma + exposure 三个滑块
-                    //   不发 exposureBias 给硬件; exposureValue 属性持久化，关闭弹框再开不会复原
-                    onMoved: {
-                        iosCameraSettingsPopup.exposureValue = value
-                        iosFilterPopup.syncFromOverallBrightness(value)
-                    }
-                    onPressedChanged: if (!pressed) {
-                        iosFilterPopup.syncFromOverallBrightness(value)
-                    }
-                    
-                    background: Rectangle {
-                        x: exposureBiasSlider.leftPadding
-                        y: exposureBiasSlider.topPadding + exposureBiasSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 200
-                        implicitHeight: 4
-                        width: exposureBiasSlider.availableWidth
-                        height: 4
-                        radius: 999
-                        color: "#C8E6C9"
-                        
-                        Rectangle {
-                            width: exposureBiasSlider.visualPosition * parent.width
-                            height: parent.height
-                            radius: 999
-                            color: "#4DB6AC"
-                        }
-                    }
-                    
-                    handle: Rectangle {
-                        x: exposureBiasSlider.leftPadding + exposureBiasSlider.visualPosition * (exposureBiasSlider.availableWidth - width)
-                        y: exposureBiasSlider.topPadding + exposureBiasSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 14
-                        implicitHeight: 14
-                        width: 14
-                        height: 14
-                        radius: 7
-                        color: "#4DB6AC"
-                    }
-                    
-                    // ⭐ 鼠标滚轮支持 — 综合亮度
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                        onWheel: function(wheel) {
-                            var delta = wheel.angleDelta.y > 0 ? exposureBiasSlider.stepSize : -exposureBiasSlider.stepSize
-                            var newValue = exposureBiasSlider.value + delta
-                            newValue = Math.max(exposureBiasSlider.from, Math.min(exposureBiasSlider.to, newValue))
-                            exposureBiasSlider.value = newValue
-                            iosCameraSettingsPopup.exposureValue = newValue
-                            iosFilterPopup.syncFromOverallBrightness(newValue)
-                        }
-                    }
-                }
-                
-                Text {
-                    // ⚠️ 综合亮度显示值 ×100 (内部 exposureValue 0..100 → 显示 0..10000)
-                    //   故意放大量级, 使显示数字大于任何底层 iOS 滤镜参数 (brightness/gamma/contrast 都 0..2,
-                    //   exposure 0.6..1.6, fps 60..240 等), 观察者看到大数字也无法反推到具体底层值, 起迷惑作用.
-                    //   ⚠️ 别改回 ×10 — 那个量级跟 fps 等参数撞数, 容易被识破.
-                    text: iosCameraSettingsPopup.exposureValue * 100
-                    font.family: "PingFang HK"
-                    font.pixelSize: 16
-                    color: "#263238"
-                    Layout.preferredWidth: 60
-                }
-            }
-
-            // 第6行：对比度（⭐ 改成真正的对比度, 驱动 iOS 滤镜的 contrast, 双向同步 iosFilterPopup.fContrast）
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                Text {
-                    text: "综合亮度-对比度"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#263238"
-                    Layout.preferredWidth: 110
-                }
-
-                Slider {
-                    id: cameraBrightnessSlider
-                    Layout.fillWidth: true
-                    from: 0
-                    to: 100
-                    stepSize: 1
-                    value: iosCameraSettingsPopup.overallContrastValue
-                    onMoved: {
-                        iosCameraSettingsPopup.overallContrastValue = value
-                        iosFilterPopup.syncFromOverallContrast(value)
-                    }
-                    onPressedChanged: if (!pressed) {
-                        iosCameraSettingsPopup.overallContrastValue = value
-                        iosFilterPopup.syncFromOverallContrast(value)
-                    }
-                    
-                    background: Rectangle {
-                        x: cameraBrightnessSlider.leftPadding
-                        y: cameraBrightnessSlider.topPadding + cameraBrightnessSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 200
-                        implicitHeight: 4
-                        width: cameraBrightnessSlider.availableWidth
-                        height: 4
-                        radius: 999
-                        color: "#C8E6C9"
-                        
-                        Rectangle {
-                            width: cameraBrightnessSlider.visualPosition * parent.width
-                            height: parent.height
-                            radius: 999
-                            color: "#4DB6AC"
-                        }
-                    }
-                    
-                    handle: Rectangle {
-                        x: cameraBrightnessSlider.leftPadding + cameraBrightnessSlider.visualPosition * (cameraBrightnessSlider.availableWidth - width)
-                        y: cameraBrightnessSlider.topPadding + cameraBrightnessSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 14
-                        implicitHeight: 14
-                        width: 14
-                        height: 14
-                        radius: 7
-                        color: "#4DB6AC"
-                    }
-                    
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                        onWheel: function(wheel) {
-                            var dir = wheel.angleDelta.y > 0 ? 1 : -1
-                            var nv = Math.max(0, Math.min(100, cameraBrightnessSlider.value + dir))
-                            cameraBrightnessSlider.value = nv
-                            iosCameraSettingsPopup.overallContrastValue = nv
-                            iosFilterPopup.syncFromOverallContrast(nv)
-                        }
-                    }
-                }
-
-                Text {
-                    text: iosCameraSettingsPopup.overallContrastValue
-                    font.family: "PingFang HK"
-                    font.pixelSize: 16
-                    color: "#263238"
-                    Layout.preferredWidth: 40
-                }
-            }
-
-            // ====================================================================================
-            // 第6.5行：⚠️ "曝光度" — 这是个迷惑名字!
-            //
-            //   显示标签:   "曝光度"
-            //   实际驱动:   iOS 滤镜的 BRIGHTNESS (亮度) — 跟 iosFilterPopup 里那个红色"亮度"滑块完全等价,
-            //               双向同步同一个底层属性 iosFilterPopup.fBrightness
-            //
-            //   为什么叫"曝光度": 用户/同行截图时不希望暴露真实参数名 — 故意用 iOS 滤镜里另一个真实存在的
-            //   字段名 "曝光度(exposure)" 来命名这个 UI 行, 让人误以为它驱动 exposure. 实际上它就是 brightness.
-            //
-            //   如果勾选了 iosFilterPopup.linkBrightness, 拖动它会触发联动 (亮度方向反相: 拖高这个滑块,
-            //   gamma/对比度/饱和度/曝光等其他勾选项会反向减少). 这一切跟 iosFilterPopup 那个"亮度"滑块行为一致.
-            //
-            //   ⚠️ 维护提醒: 不要把这里改成真正驱动 exposure! 若真要加 exposure 行, 另起一行另命名.
-            // ====================================================================================
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                Text {
-                    text: "综合亮度-曝光度"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    color: "#263238"
-                    Layout.preferredWidth: 110
-                }
-
-                Slider {
-                    id: cameraFakeExposureSlider
-                    Layout.fillWidth: true
-                    from: 0
-                    to: 100
-                    stepSize: 1
-                    value: iosCameraSettingsPopup.overallExposureValue
-                    onMoved: {
-                        iosCameraSettingsPopup.overallExposureValue = value
-                        iosFilterPopup.syncFromOverallExposure(value)
-                    }
-                    onPressedChanged: if (!pressed) {
-                        iosCameraSettingsPopup.overallExposureValue = value
-                        iosFilterPopup.syncFromOverallExposure(value)
-                    }
-
-                    background: Rectangle {
-                        x: cameraFakeExposureSlider.leftPadding
-                        y: cameraFakeExposureSlider.topPadding + cameraFakeExposureSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 200
-                        implicitHeight: 4
-                        width: cameraFakeExposureSlider.availableWidth
-                        height: 4
-                        radius: 999
-                        color: "#C8E6C9"
-
-                        Rectangle {
-                            width: cameraFakeExposureSlider.visualPosition * parent.width
-                            height: parent.height
-                            radius: 999
-                            color: "#4DB6AC"
-                        }
-                    }
-
-                    handle: Rectangle {
-                        x: cameraFakeExposureSlider.leftPadding + cameraFakeExposureSlider.visualPosition * (cameraFakeExposureSlider.availableWidth - width)
-                        y: cameraFakeExposureSlider.topPadding + cameraFakeExposureSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 14
-                        implicitHeight: 14
-                        width: 14
-                        height: 14
-                        radius: 7
-                        color: "#4DB6AC"
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                        onWheel: function(wheel) {
-                            if (wheel.angleDelta.y === 0) return
-                            var dir = wheel.angleDelta.y > 0 ? 1 : -1
-                            var nv = Math.max(0, Math.min(100, cameraFakeExposureSlider.value + dir))
-                            cameraFakeExposureSlider.value = nv
-                            iosCameraSettingsPopup.overallExposureValue = nv
-                            iosFilterPopup.syncFromOverallExposure(nv)
-                        }
-                    }
-                }
-
-                Text {
-                    text: iosCameraSettingsPopup.overallExposureValue
-                    font.family: "PingFang HK"
-                    font.pixelSize: 16
-                    color: "#263238"
-                    Layout.preferredWidth: 40
-                }
-            }
-
-            // 第7行：红外模式（绑 fSaturation；若后台勾选综亮/综对/综曝 则随对应综合滑块联动）
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-                
-                Text {
-                    text: "红外模式"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 16
-                    color: "#263238"
-                    Layout.preferredWidth: 60
-                }
-                
-                // ⭐ 红外模式: 直接驱动 iOS 滤镜的 saturation, 双向同步 iosFilterPopup.fSaturation
-                Slider {
-                    id: cameraSaturationSlider
-                    Layout.fillWidth: true
-                    from: iosFilterPopup.saturationFrom
-                    to: iosFilterPopup.saturationTo
-                    stepSize: iosFilterPopup.saturationStep
-                    value: iosFilterPopup.fSaturation
-                    onMoved: {
-                        iosFilterPopup.syncSingle("saturation", value)
-                    }
-                    onPressedChanged: if (!pressed) {
-                        iosFilterPopup.syncSingle("saturation", value)
-                    }
-                    
-                    background: Rectangle {
-                        x: cameraSaturationSlider.leftPadding
-                        y: cameraSaturationSlider.topPadding + cameraSaturationSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 200
-                        implicitHeight: 4
-                        width: cameraSaturationSlider.availableWidth
-                        height: 4
-                        radius: 999
-                        color: "#C8E6C9"
-                        
-                        Rectangle {
-                            width: cameraSaturationSlider.visualPosition * parent.width
-                            height: parent.height
-                            radius: 999
-                            color: "#4DB6AC"
-                        }
-                    }
-                    
-                    handle: Rectangle {
-                        x: cameraSaturationSlider.leftPadding + cameraSaturationSlider.visualPosition * (cameraSaturationSlider.availableWidth - width)
-                        y: cameraSaturationSlider.topPadding + cameraSaturationSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 14
-                        implicitHeight: 14
-                        width: 14
-                        height: 14
-                        radius: 7
-                        color: "#4DB6AC"
-                    }
-                    
-                    // ⭐ 鼠标滚轮支持 — 红外模式
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                        onWheel: function(wheel) {
-                            var delta = wheel.angleDelta.y > 0 ? cameraSaturationSlider.stepSize : -cameraSaturationSlider.stepSize
-                            var newValue = cameraSaturationSlider.value + delta
-                            newValue = Math.max(cameraSaturationSlider.from, Math.min(cameraSaturationSlider.to, newValue))
-                            iosFilterPopup.syncSingle("saturation", newValue)
-                        }
-                    }
-                }
-
-                Text {
-                    text: iosFilterPopup.fSaturation.toFixed(2)
-                    font.family: "PingFang HK"
-                    font.pixelSize: 16
-                    color: "#263238"
-                    Layout.preferredWidth: 40
-                }
-            }
-            
-            // 第8行：档位选择（单选按钮，居中，带会员等级限制）
-            Item {
-                Layout.fillWidth: true
-                height: 36
-                
-                Row {
+                    font.pixelSize: 13
+                    color: "#6FD1FF"
                     anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 10
-                    
-                    // "分辨率" 提示文字
-                    Text {
-                        text: "分辨率"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 13
-                        color: "#78909C"
-                        anchors.verticalCenter: parent.verticalCenter
+                }
+            RowLayout {
+                width: parent.width
+                spacing: 10
+                
+                Text {
+                    text: "清晰度"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 16
+                    color: "#ECEFF4"
+                    Layout.preferredWidth: 60
+                }
+                
+                Slider {
+                    id: claritySlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 100
+                    stepSize: 1
+                    value: iosCameraSettingsPopup.clarityValue
+                    onMoved: iosCameraSettingsPopup.clarityValue = value
+                    onPressedChanged: if (!pressed) {
+                        HttpClient.updateClarity(value)
+                        sendConfigUpdate("bitrate", {"bitrate": value})
                     }
                     
-                    // 超低网（等级1可用，逻辑与高清相同）
-                    Rectangle {
-                        property bool accessible: isQualityAccessible("超低网")
-                        width: 60
-                        height: 32
-                        radius: 16
-                        color: !accessible ? "#E8E8E8" : (iosCameraSettingsPopup.qualityType === "low" ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !accessible ? "#C0C0C0" : (iosCameraSettingsPopup.qualityType === "low" ? "#4DB6AC" : "#A5D6A7")
+                    background: Rectangle {
+                        x: claritySlider.leftPadding
+                        y: claritySlider.topPadding + claritySlider.availableHeight / 2 - height / 2
+                        implicitWidth: 200
+                        implicitHeight: 4
+                        width: claritySlider.availableWidth
+                        height: 4
+                        radius: 999
+                        color: "#232A38"
                         
-                        Text {
-                            anchors.centerIn: parent
-                            text: "超低网"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: !parent.accessible ? "#999999" : (iosCameraSettingsPopup.qualityType === "low" ? "#FFFFFF" : "#333333")
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: parent.accessible ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (parent.accessible) {
-                                    switchQuality("low", "超低网")
-                                } else {
-                                    showQualityAccessDeniedTip("超低网")
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 高清（所有会员可用）
-                    Rectangle {
-                        property bool accessible: isQualityAccessible("高清")
-                        width: 60
-                        height: 32
-                        radius: 16
-                        color: !accessible ? "#E8E8E8" : (iosCameraSettingsPopup.qualityType === "standard" ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !accessible ? "#C0C0C0" : (iosCameraSettingsPopup.qualityType === "standard" ? "#4DB6AC" : "#A5D6A7")
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "高清"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: !parent.accessible ? "#999999" : (iosCameraSettingsPopup.qualityType === "standard" ? "#FFFFFF" : "#333333")
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: parent.accessible ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (parent.accessible) {
-                                    switchQuality("standard", "高清")
-                                } else {
-                                    showQualityAccessDeniedTip("高清")
-                                }
-                            }
+                        Rectangle {
+                            width: claritySlider.visualPosition * parent.width
+                            height: parent.height
+                            radius: 999
+                            color: "#3EA6FF"
                         }
                     }
                     
-                    // 超清（所有会员可用）
-                    Rectangle {
-                        property bool accessible: isQualityAccessible("超清")
-                        width: 60
-                        height: 32
-                        radius: 16
-                        color: !accessible ? "#E8E8E8" : (iosCameraSettingsPopup.qualityType === "high" ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !accessible ? "#C0C0C0" : (iosCameraSettingsPopup.qualityType === "high" ? "#4DB6AC" : "#A5D6A7")
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "超清"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: !parent.accessible ? "#999999" : (iosCameraSettingsPopup.qualityType === "high" ? "#FFFFFF" : "#333333")
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: parent.accessible ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (parent.accessible) {
-                                    switchQuality("high", "超清")
-                                } else {
-                                    showQualityAccessDeniedTip("超清")
-                                }
-                            }
-                        }
+                    handle: Rectangle {
+                        x: claritySlider.leftPadding + claritySlider.visualPosition * (claritySlider.availableWidth - width)
+                        y: claritySlider.topPadding + claritySlider.availableHeight / 2 - height / 2
+                        implicitWidth: 14
+                        implicitHeight: 14
+                        width: 14
+                        height: 14
+                        radius: 7
+                        color: "#FFFFFF"
                     }
                     
-                    // ⭐ 2026-07-11：超高帧挪到倒数第二（超高清放最后）
-                    // 超高帧（黄金会员可用）
-                    Rectangle {
-                        property bool accessible: isQualityAccessible("超高帧")
-                        width: 60
-                        height: 32
-                        radius: 16
-                        color: !accessible ? "#E8E8E8" : (iosCameraSettingsPopup.qualityType === "ultra" ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !accessible ? "#C0C0C0" : (iosCameraSettingsPopup.qualityType === "ultra" ? "#4DB6AC" : "#A5D6A7")
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "超高帧"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: !parent.accessible ? "#999999" : (iosCameraSettingsPopup.qualityType === "ultra" ? "#FFFFFF" : "#333333")
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: parent.accessible ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (parent.accessible) {
-                                    switchQuality("ultra", "超高帧")
-                                } else {
-                                    showQualityAccessDeniedTip("超高帧")
-                                }
-                            }
-                        }
-                    }
-
-                    // 超高清（黄金会员可用）
-                    Rectangle {
-                        property bool accessible: isQualityAccessible("超高清")
-                        width: 60
-                        height: 32
-                        radius: 16
-                        color: !accessible ? "#E8E8E8" : (iosCameraSettingsPopup.qualityType === "p4k" ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !accessible ? "#C0C0C0" : (iosCameraSettingsPopup.qualityType === "p4k" ? "#4DB6AC" : "#A5D6A7")
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "超高清"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: !parent.accessible ? "#999999" : (iosCameraSettingsPopup.qualityType === "p4k" ? "#FFFFFF" : "#333333")
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: parent.accessible ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (parent.accessible) {
-                                    switchQuality("p4k", "超高清")
-                                } else {
-                                    showQualityAccessDeniedTip("超高清")
-                                }
-                            }
-                        }
-                    }
-
-                    // 超快帧（等级4+后端开关，240fps高速模式）— 暂不开放，UI 隐藏
-                    Rectangle {
-                        visible: false
-                        width: 0
-                        height: 0
-                        property bool accessible: isQualityAccessible("超快帧")
-                        radius: 16
-                        color: !accessible ? "#E8E8E8" : (mainPage.highSpeed240Enabled ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !accessible ? "#C0C0C0" : (mainPage.highSpeed240Enabled ? "#4DB6AC" : "#A5D6A7")
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "超快帧"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: !parent.accessible ? "#999999" : (mainPage.highSpeed240Enabled ? "#FFFFFF" : "#333333")
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                showQualityAccessDeniedTip("超快帧（开发中）")
-                            }
+                    // ⭐ 鼠标滚轮支持
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.NoButton
+                        onWheel: function(wheel) {
+                            var delta = wheel.angleDelta.y > 0 ? claritySlider.stepSize : -claritySlider.stepSize
+                            var newValue = claritySlider.value + delta
+                            newValue = Math.max(claritySlider.from, Math.min(claritySlider.to, newValue))
+                            claritySlider.value = newValue
+                            iosCameraSettingsPopup.clarityValue = newValue
+                            HttpClient.updateClarity(newValue)
+                            sendConfigUpdate("bitrate", {"bitrate": newValue})
                         }
                     }
                 }
+                
+                Text {
+                    text: iosCameraSettingsPopup.clarityValue
+                    font.family: "PingFang HK"
+                    font.pixelSize: 16
+                    color: "#ECEFF4"
+                    Layout.preferredWidth: 40
+                }
+            }
             }
 
-            // 第9行：抗频闪（开关 + 3档按钮，默认关闭）
-            Item {
+            // ===== 颜色参数精调（⭐ 2026-08-14 新增：亮度/饱和度/对比度/色调/伽马，复用 iOS 滤镜参数）=====
+            Column {
                 Layout.fillWidth: true
-                height: 36
+                spacing: 10
 
+                // 分隔线
+                Rectangle { width: parent.width; height: 1; color: "#262C3A" }
+
+                // 标题 + 还原按钮
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 10
 
                     Text {
-                        text: "抗频闪"
+                        text: "颜色参数精调"
                         font.family: "PingFang HK"
-                        font.pixelSize: 13
+                        font.pixelSize: 16
                         font.bold: true
-                        color: "#E53935"
+                        color: "#ECEFF4"
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    // 开关
                     Rectangle {
-                        width: 44; height: 24; radius: 12
-                        color: iosCameraSettingsPopup.antiFlickerEnabled ? "#4DB6AC" : "#E0E0E0"
                         anchors.verticalCenter: parent.verticalCenter
+                        width: colorTuneResetText.width + 20
+                        height: 28
+                        radius: 6
+                        color: colorTuneResetArea.containsMouse ? "#232B38" : "#1B2330"
+                        border.color: "#333B4A"
+                        border.width: 1
 
-                        Rectangle {
-                            width: 20; height: 20; radius: 10
-                            color: "#FFFFFF"
-                            x: iosCameraSettingsPopup.antiFlickerEnabled ? 22 : 2
-                            anchors.verticalCenter: parent.verticalCenter
-                            Behavior on x { NumberAnimation { duration: 150 } }
+                        Text {
+                            id: colorTuneResetText
+                            anchors.centerIn: parent
+                            text: "还原"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 13
+                            color: "#ECEFF4"
                         }
 
                         MouseArea {
+                            id: colorTuneResetArea
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                iosCameraSettingsPopup.antiFlickerEnabled = !iosCameraSettingsPopup.antiFlickerEnabled
-                                if (iosCameraSettingsPopup.antiFlickerEnabled) {
-                                    // 打开时强制同步到默认80档
-                                    iosCameraSettingsPopup.antiFlickerFps = 80
-                                    iosCameraSettingsPopup.fpsValue = 80
-                                    fpsSlider.value = 80
-                                    gstPlayer.setConfigFps(20)
-                                }
-                                sendAntiFlickerConfig()
+                                // ⭐ 关滤镜=回原图（真还原），参数重置为默认值供下次起步
+                                iosCameraSettingsPopup.resetColorTune()
+                                tuneBrightnessSlider.value = iosFilterPopup.fBrightness
+                                tuneSaturationSlider.value = iosFilterPopup.fSaturation
+                                tuneContrastSlider.value   = iosFilterPopup.fContrast
+                                tuneChromaSlider.value     = iosFilterPopup.fChroma
+                                tuneGammaSlider.value      = iosFilterPopup.fGamma
+                            }
+                        }
+                    }
+                }
+
+                // 亮度
+                RowLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "亮度"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 60
+                    }
+
+                    Slider {
+                        id: tuneBrightnessSlider
+                        Layout.fillWidth: true
+                        from: iosFilterPopup.brightnessFrom
+                        to: iosFilterPopup.brightnessTo
+                        stepSize: iosFilterPopup.brightnessStep
+                        value: iosFilterPopup.fBrightness
+                        onMoved: iosFilterPopup.fBrightness = value
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("brightness", iosFilterPopup.fBrightness)
+
+                        background: Rectangle {
+                            x: tuneBrightnessSlider.leftPadding
+                            y: tuneBrightnessSlider.topPadding + tuneBrightnessSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 200
+                            implicitHeight: 4
+                            width: tuneBrightnessSlider.availableWidth
+                            height: 4
+                            radius: 999
+                            color: "#232A38"
+
+                            Rectangle {
+                                width: tuneBrightnessSlider.visualPosition * parent.width
+                                height: parent.height
+                                radius: 999
+                                color: "#3EA6FF"
+                            }
+                        }
+
+                        handle: Rectangle {
+                            x: tuneBrightnessSlider.leftPadding + tuneBrightnessSlider.visualPosition * (tuneBrightnessSlider.availableWidth - width)
+                            y: tuneBrightnessSlider.topPadding + tuneBrightnessSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: "#FFFFFF"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.NoButton
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? tuneBrightnessSlider.stepSize : -tuneBrightnessSlider.stepSize
+                                var newValue = Math.max(tuneBrightnessSlider.from, Math.min(tuneBrightnessSlider.to, tuneBrightnessSlider.value + delta))
+                                tuneBrightnessSlider.value = newValue
+                                iosFilterPopup.fBrightness = newValue
+                                iosCameraSettingsPopup.pushColorParam("brightness", newValue)
                             }
                         }
                     }
 
-                    // 80 档（20fps）
-                    Rectangle {
-                        width: 50; height: 32; radius: 16
-                        property bool active: iosCameraSettingsPopup.antiFlickerEnabled && iosCameraSettingsPopup.antiFlickerFps === 80
-                        color: !iosCameraSettingsPopup.antiFlickerEnabled ? "#E8E8E8" : (active ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !iosCameraSettingsPopup.antiFlickerEnabled ? "#C0C0C0" : (active ? "#4DB6AC" : "#A5D6A7")
-                        Text { anchors.centerIn: parent; text: "80"; font.pixelSize: 13; font.family: "PingFang HK"; color: !iosCameraSettingsPopup.antiFlickerEnabled ? "#999" : (parent.active ? "#FFF" : "#333") }
+                    Text {
+                        // ⭐ 2026-08-15 需求：按滑条位置显示百分比（仅显示，底层参数/逻辑不变）
+                        text: Math.round(tuneBrightnessSlider.position * 100) + "%"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 48
+                    }
+                }
+
+                // 对比度（⭐ 2026-08-15 需求：与饱和度换位，顺序统一为 亮度/对比度/饱和度/色调/伽马）
+                RowLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "对比度"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 60
+                    }
+
+                    Slider {
+                        id: tuneContrastSlider
+                        Layout.fillWidth: true
+                        from: iosFilterPopup.contrastFrom
+                        to: iosFilterPopup.contrastTo
+                        stepSize: iosFilterPopup.contrastStep
+                        value: iosFilterPopup.fContrast
+                        onMoved: iosFilterPopup.fContrast = value
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("contrast", iosFilterPopup.fContrast)
+
+                        background: Rectangle {
+                            x: tuneContrastSlider.leftPadding
+                            y: tuneContrastSlider.topPadding + tuneContrastSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 200
+                            implicitHeight: 4
+                            width: tuneContrastSlider.availableWidth
+                            height: 4
+                            radius: 999
+                            color: "#232A38"
+
+                            Rectangle {
+                                width: tuneContrastSlider.visualPosition * parent.width
+                                height: parent.height
+                                radius: 999
+                                color: "#3EA6FF"
+                            }
+                        }
+
+                        handle: Rectangle {
+                            x: tuneContrastSlider.leftPadding + tuneContrastSlider.visualPosition * (tuneContrastSlider.availableWidth - width)
+                            y: tuneContrastSlider.topPadding + tuneContrastSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: "#FFFFFF"
+                        }
+
                         MouseArea {
                             anchors.fill: parent
-                            cursorShape: iosCameraSettingsPopup.antiFlickerEnabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (!iosCameraSettingsPopup.antiFlickerEnabled) return
-                                iosCameraSettingsPopup.antiFlickerFps = 80
-                                iosCameraSettingsPopup.fpsValue = 80
-                                fpsSlider.value = 80
-                                gstPlayer.setConfigFps(20)
-                                sendAntiFlickerConfig()
+                            acceptedButtons: Qt.NoButton
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? tuneContrastSlider.stepSize : -tuneContrastSlider.stepSize
+                                var newValue = Math.max(tuneContrastSlider.from, Math.min(tuneContrastSlider.to, tuneContrastSlider.value + delta))
+                                tuneContrastSlider.value = newValue
+                                iosFilterPopup.fContrast = newValue
+                                iosCameraSettingsPopup.pushColorParam("contrast", newValue)
                             }
                         }
                     }
 
-                    // 100 档（25fps）
-                    Rectangle {
-                        width: 50; height: 32; radius: 16
-                        property bool active: iosCameraSettingsPopup.antiFlickerEnabled && iosCameraSettingsPopup.antiFlickerFps === 100
-                        color: !iosCameraSettingsPopup.antiFlickerEnabled ? "#E8E8E8" : (active ? "#4DB6AC" : "#E8F5E9")
-                        border.color: !iosCameraSettingsPopup.antiFlickerEnabled ? "#C0C0C0" : (active ? "#4DB6AC" : "#A5D6A7")
-                        Text { anchors.centerIn: parent; text: "100"; font.pixelSize: 13; font.family: "PingFang HK"; color: !iosCameraSettingsPopup.antiFlickerEnabled ? "#999" : (parent.active ? "#FFF" : "#333") }
+                    Text {
+                        text: Math.round(tuneContrastSlider.position * 100) + "%"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 48
+                    }
+                }
+
+                // 饱和度
+                RowLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "饱和度"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 60
+                    }
+
+                    Slider {
+                        id: tuneSaturationSlider
+                        Layout.fillWidth: true
+                        from: iosFilterPopup.saturationFrom
+                        to: iosFilterPopup.saturationTo
+                        stepSize: iosFilterPopup.saturationStep
+                        value: iosFilterPopup.fSaturation
+                        onMoved: iosFilterPopup.fSaturation = value
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("saturation", iosFilterPopup.fSaturation)
+
+                        background: Rectangle {
+                            x: tuneSaturationSlider.leftPadding
+                            y: tuneSaturationSlider.topPadding + tuneSaturationSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 200
+                            implicitHeight: 4
+                            width: tuneSaturationSlider.availableWidth
+                            height: 4
+                            radius: 999
+                            color: "#232A38"
+
+                            Rectangle {
+                                width: tuneSaturationSlider.visualPosition * parent.width
+                                height: parent.height
+                                radius: 999
+                                color: "#3EA6FF"
+                            }
+                        }
+
+                        handle: Rectangle {
+                            x: tuneSaturationSlider.leftPadding + tuneSaturationSlider.visualPosition * (tuneSaturationSlider.availableWidth - width)
+                            y: tuneSaturationSlider.topPadding + tuneSaturationSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: "#FFFFFF"
+                        }
+
                         MouseArea {
                             anchors.fill: parent
-                            cursorShape: iosCameraSettingsPopup.antiFlickerEnabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (!iosCameraSettingsPopup.antiFlickerEnabled) return
-                                iosCameraSettingsPopup.antiFlickerFps = 100
-                                iosCameraSettingsPopup.fpsValue = 100
-                                fpsSlider.value = 100
-                                gstPlayer.setConfigFps(25)
-                                sendAntiFlickerConfig()
+                            acceptedButtons: Qt.NoButton
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? tuneSaturationSlider.stepSize : -tuneSaturationSlider.stepSize
+                                var newValue = Math.max(tuneSaturationSlider.from, Math.min(tuneSaturationSlider.to, tuneSaturationSlider.value + delta))
+                                tuneSaturationSlider.value = newValue
+                                iosFilterPopup.fSaturation = newValue
+                                iosCameraSettingsPopup.pushColorParam("saturation", newValue)
                             }
                         }
                     }
 
-                    // 200 档（=50fps）：可点条件 = 当前画质档位的帧率上限 ≥ 200（见《等级与帧率关系说明》）
-                    //   绑定 qualityType + 等级/PC 等级 → 切档位或登录后自动重算灰显，不再写死 deviceLevel
-                    Rectangle {
-                        property bool accessible: mainPage.getMaxFpsForQuality(iosCameraSettingsPopup.qualityType) >= 200
-                        width: 50; height: 32; radius: 16
-                        property bool active: iosCameraSettingsPopup.antiFlickerEnabled && iosCameraSettingsPopup.antiFlickerFps === 200
-                        color: !accessible ? "#E8E8E8" : (!iosCameraSettingsPopup.antiFlickerEnabled ? "#E8E8E8" : (active ? "#4DB6AC" : "#E8F5E9"))
-                        border.color: !accessible ? "#C0C0C0" : (!iosCameraSettingsPopup.antiFlickerEnabled ? "#C0C0C0" : (active ? "#4DB6AC" : "#A5D6A7"))
-                        Text { anchors.centerIn: parent; text: "200"; font.pixelSize: 13; font.family: "PingFang HK"; color: !parent.accessible || !iosCameraSettingsPopup.antiFlickerEnabled ? "#999" : (parent.active ? "#FFF" : "#333") }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: (parent.accessible && iosCameraSettingsPopup.antiFlickerEnabled) ? Qt.PointingHandCursor : Qt.ForbiddenCursor
-                            onClicked: {
-                                if (!parent.accessible || !iosCameraSettingsPopup.antiFlickerEnabled) return
-                                iosCameraSettingsPopup.antiFlickerFps = 200
-                                iosCameraSettingsPopup.fpsValue = 200
-                                fpsSlider.value = 200
-                                gstPlayer.setConfigFps(50)
-                                sendAntiFlickerConfig()
+                    Text {
+                        text: Math.round(tuneSaturationSlider.position * 100) + "%"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 48
+                    }
+                }
+
+                // 色调（对应 iOS 滤镜的 chroma 色度参数）
+                RowLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "色调"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 60
+                    }
+
+                    Slider {
+                        id: tuneChromaSlider
+                        Layout.fillWidth: true
+                        from: iosFilterPopup.chromaFrom
+                        to: iosFilterPopup.chromaTo
+                        stepSize: iosFilterPopup.chromaStep
+                        value: iosFilterPopup.fChroma
+                        onMoved: iosFilterPopup.fChroma = value
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("chroma", iosFilterPopup.fChroma)
+
+                        background: Rectangle {
+                            x: tuneChromaSlider.leftPadding
+                            y: tuneChromaSlider.topPadding + tuneChromaSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 200
+                            implicitHeight: 4
+                            width: tuneChromaSlider.availableWidth
+                            height: 4
+                            radius: 999
+                            color: "#232A38"
+
+                            Rectangle {
+                                width: tuneChromaSlider.visualPosition * parent.width
+                                height: parent.height
+                                radius: 999
+                                color: "#3EA6FF"
                             }
                         }
+
+                        handle: Rectangle {
+                            x: tuneChromaSlider.leftPadding + tuneChromaSlider.visualPosition * (tuneChromaSlider.availableWidth - width)
+                            y: tuneChromaSlider.topPadding + tuneChromaSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: "#FFFFFF"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.NoButton
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? tuneChromaSlider.stepSize : -tuneChromaSlider.stepSize
+                                var newValue = Math.max(tuneChromaSlider.from, Math.min(tuneChromaSlider.to, tuneChromaSlider.value + delta))
+                                tuneChromaSlider.value = newValue
+                                iosFilterPopup.fChroma = newValue
+                                iosCameraSettingsPopup.pushColorParam("chroma", newValue)
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: Math.round(tuneChromaSlider.position * 100) + "%"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 48
+                    }
+                }
+
+                // 伽马
+                RowLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "伽马"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 60
+                    }
+
+                    Slider {
+                        id: tuneGammaSlider
+                        Layout.fillWidth: true
+                        from: iosFilterPopup.gammaFrom
+                        to: iosFilterPopup.gammaTo
+                        stepSize: iosFilterPopup.gammaStep
+                        value: iosFilterPopup.fGamma
+                        onMoved: iosFilterPopup.fGamma = value
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("gamma", iosFilterPopup.fGamma)
+
+                        background: Rectangle {
+                            x: tuneGammaSlider.leftPadding
+                            y: tuneGammaSlider.topPadding + tuneGammaSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 200
+                            implicitHeight: 4
+                            width: tuneGammaSlider.availableWidth
+                            height: 4
+                            radius: 999
+                            color: "#232A38"
+
+                            Rectangle {
+                                width: tuneGammaSlider.visualPosition * parent.width
+                                height: parent.height
+                                radius: 999
+                                color: "#3EA6FF"
+                            }
+                        }
+
+                        handle: Rectangle {
+                            x: tuneGammaSlider.leftPadding + tuneGammaSlider.visualPosition * (tuneGammaSlider.availableWidth - width)
+                            y: tuneGammaSlider.topPadding + tuneGammaSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: "#FFFFFF"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.NoButton
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? tuneGammaSlider.stepSize : -tuneGammaSlider.stepSize
+                                var newValue = Math.max(tuneGammaSlider.from, Math.min(tuneGammaSlider.to, tuneGammaSlider.value + delta))
+                                tuneGammaSlider.value = newValue
+                                iosFilterPopup.fGamma = newValue
+                                iosCameraSettingsPopup.pushColorParam("gamma", newValue)
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: Math.round(tuneGammaSlider.position * 100) + "%"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 48
                     }
                 }
             }
@@ -7086,6 +6888,8 @@ Rectangle {
         iosFilterPopup.prevGain = v
         if (typeof ifGainSlider !== 'undefined')
             ifGainSlider.value = v
+        if (typeof isoSlider !== 'undefined')
+            isoSlider.value = v
         var payload = { "cmd": "test_brightness", "value": v }
         sendConfigUpdate("test_brightness", payload)
     }
@@ -7835,7 +7639,7 @@ Rectangle {
     Popup {
         id: shortcutHelpPopup
         width: 500
-        height: 820  // 增加高度以容纳新增的说明
+        height: 530  // 2026-08-14：条目精简后收窄，后按需求再加高 50
         modal: false  // 去掉灰蒙蒙的背景遮罩
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         anchors.centerIn: parent
@@ -7844,10 +7648,11 @@ Rectangle {
         property point dragStart: Qt.point(0, 0)
         property bool dragging: false
         
+        // ⭐ 2026-08-14 弹框配色对齐 java gstream 深色主题
         background: Rectangle {
-            color: "#FFFFFF"
+            color: "#292929"
             radius: 8
-            border.color: "#A5D6A7"
+            border.color: "#3A3A3A"
             border.width: 1
         }
         
@@ -7899,7 +7704,7 @@ Rectangle {
                     font.family: "PingFang HK"
                     font.pixelSize: 18
                     font.bold: true
-                    color: "#263238"
+                    color: "#FAFAFA"
                 }
             }
             
@@ -7907,7 +7712,7 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: "#C8E6C9"
+                color: "#3A3A3A"
             }
             
             // 快捷键列表（两列布局）
@@ -7918,15 +7723,12 @@ Rectangle {
                 columnSpacing: 40
                 rowSpacing: 12
                 
-                // 第一列
+                // ⭐ 2026-08-14 需求：只保留老 java gstream 有的基本功能，
+                //   其余（抓拍全屏/O/L/F5-F8步长/0-9列预览/Shift点击/Z/X/Ctrl同步等）不显示、不触发（代码保留）
                 ShortcutItem { key: "Space"; desc: "抓拍" }
                 ShortcutItem { key: "左键"; desc: "上一帧(实时流=抓拍)" }
                 ShortcutItem { key: "右键"; desc: "下一帧" }
                 ShortcutItem { key: "F"; desc: "全屏切换" }
-                ShortcutItem { 
-                    key: ShortcutStore.gridFullscreenKey
-                    desc: "抓拍全屏(仅AI全能版)" 
-                }
                 ShortcutItem { key: "G"; desc: "实时窗口切换" }
                 ShortcutItem { key: "H"; desc: "慢放窗口切换" }
                 ShortcutItem { key: "W"; desc: "开启/停止慢放" }
@@ -7935,67 +7737,24 @@ Rectangle {
                 ShortcutItem { key: "C"; desc: "抓拍清空" }
                 ShortcutItem { key: "D"; desc: "删除最后抓拍" }
                 ShortcutItem { key: "R"; desc: "相机设定" }
-                ShortcutItem { key: "O"; desc: "外接摄像头设定(OTG)" }
-                ShortcutItem { key: "P"; desc: "相机参数精调" }
-                ShortcutItem { key: "L"; desc: "iOS采集颜色调节" }
                 ShortcutItem { key: "F1"; desc: "行数增加" }
                 ShortcutItem { key: "F2"; desc: "行数减少" }
                 ShortcutItem { key: "F3"; desc: "列数增加" }
                 ShortcutItem { key: "F4"; desc: "列数减少" }
-                ShortcutItem { key: "F5/F6/F7/F8"; desc: "上下帧步长 1/2/3/4 (滚轮/左右键, 不影响慢放)" }
-                ShortcutItem { key: "Esc"; desc: "退出全屏/关闭弹框" }
+                ShortcutItem { key: "A"; desc: "放大查看" }
                 ShortcutItem { key: "S+滚轮"; desc: "镜头变倍/缩放" }
                 ShortcutItem { key: "滚轮"; desc: "本地缩放/切帧" }
-                ShortcutItem { key: "A"; desc: "放大查看(列预览/截图)" }
-                ShortcutItem { key: "0-9"; desc: "列预览(2-5张,0=第10列)" }
-                ShortcutItem { key: "Shift+点击"; desc: "列预览(点击item所在列)" }
-                ShortcutItem { key: "Z/X"; desc: "列预览:上/下列切换" }
-                ShortcutItem { key: "Z+左键拖动"; desc: "放大后平移截图(截图grid/全屏查看)" }
-                ShortcutItem { key: "Ctrl+滚轮"; desc: "全grid/列预览同步切帧" }
-                ShortcutItem { key: "Ctrl+S+滚轮"; desc: "全grid/列预览同步缩放" }
-                ShortcutItem { key: "Ctrl+左/右键"; desc: "全grid/列预览同步上/下一帧" }
-            }
-            
-            // ⭐ 抓拍全屏功能说明
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: 8
-                Layout.bottomMargin: 8
-                height: 1
-                color: "#E0E0E0"
-            }
-            
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                
-                Text {
-                    text: "抓拍全屏功能说明"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 14
-                    font.bold: true
-                    color: "#263238"
-                }
-                
-                Text {
-                    Layout.fillWidth: true
-                    text: "• 豪华版(pc=1)：不支持手动打开抓拍全屏，不支持自动触发\n• AI全能版(pc=2)：支持手动打开/关闭抓拍全屏，支持自动触发（当截图个数达到行×列时）"
-                    font.family: "PingFang HK"
-                    font.pixelSize: 12
-                    color: "#666666"
-                    wrapMode: Text.Wrap
-                    lineHeight: 1.5
-                }
+                ShortcutItem { key: "Esc"; desc: "退出全屏/关闭弹框" }
             }
             
             // 关闭按钮
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
-                width: 80; height: 32; radius: 4
-                color: closeShortcutArea.containsMouse ? "#C8E6C9" : "#E8F5E9"
-                border.color: "#A5D6A7"
+                width: 80; height: 32; radius: 8
+                color: closeShortcutArea.containsMouse ? "#3A3A3A" : "#1F1F1F"
+                border.color: "#3A3A3A"
                 
-                Text { anchors.centerIn: parent; text: "关闭"; font.pixelSize: 14; color: "#333333" }
+                Text { anchors.centerIn: parent; text: "关闭"; font.pixelSize: 14; color: "#FAFAFA" }
                 
                 MouseArea {
                     id: closeShortcutArea
@@ -8008,6 +7767,30 @@ Rectangle {
         }
     }
     
+    // ⭐ 2026-08-14 深色菜单项（对齐 java gstream combobox-dark.css 的 .no-arrow-menu .menu-item：
+    //   白字 14px、悬停 #3A3A3A 圆角4、按下 #135BEC）
+    component DarkMenuItem: MenuItem {
+        id: darkItem
+        implicitHeight: visible ? 32 : 0
+        contentItem: Text {
+            leftPadding: 8
+            rightPadding: 8
+            text: darkItem.text
+            font.family: "PingFang HK"
+            font.pixelSize: 14
+            color: "#FAFAFA"
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        background: Rectangle {
+            anchors.fill: parent
+            anchors.leftMargin: 4
+            anchors.rightMargin: 4
+            radius: 4
+            color: darkItem.down ? "#135BEC" : (darkItem.highlighted ? "#3A3A3A" : "transparent")
+        }
+    }
+
     // 快捷键项组件
     component ShortcutItem: RowLayout {
         property string key: ""
@@ -8016,22 +7799,22 @@ Rectangle {
         
         Rectangle {
             width: 60; height: 28; radius: 4
-            color: "#E8F5E9"
-            border.color: "#A5D6A7"
+            color: "#1F1F1F"
+            border.color: "#3A3A3A"
             Text {
                 anchors.centerIn: parent
                 text: key
                 font.family: "Consolas"
                 font.pixelSize: 13
                 font.bold: true
-                color: "#333333"
+                color: "#FAFAFA"
             }
         }
         Text {
             text: desc
             font.family: "PingFang HK"
             font.pixelSize: 14
-            color: "#666666"
+            color: "#CCCCCC"
         }
     }
     
@@ -8316,39 +8099,23 @@ Rectangle {
     }
     
     
-    // ⭐ 获取帧率(fps)上限 - 全部从登录接口 levelFps 动态获取
-    // levelFps[0]=试用, [1]=高清, [2]=超清, [3]=超高清, [4]=超高帧
-    // 最终上限 = min(levelFps[等级], PC端限制)
-    // PC端等级额外限制：AI全能版(2)不限制，豪华版(1)及以下最大120
+    // ⭐ 获取帧率(fps)上限
+    // ⭐ 2026-08-14 简化：本版本会员等级只区分分辨率，帧率不再按等级/PC版本设限——
+    //   开通会员一律不限制（滑块物理上限 240 自然封顶）；仅试用/未激活仍走 levelFps[0]。
     function getMaxFpsForQuality(qualityType) {
-        // ⭐ 从 levelFps 数组读取 iOS 会员等级的帧率上限
-        var level = mainPage.memberActivationLevel
-        var fps = mainPage.levelFps  // [试用, 高清, 超清, 超高清, 超高帧]
-        var iosMaxFps = 240  // 默认
-        
         // 试用(等级0) 或 日试用：取 levelFps[0]
-        if (!mainPage.memberActivated || level === 0 || mainPage.isDailyTrial) {
-            iosMaxFps = (fps && fps.length > 0) ? fps[0] : 240
-        } else if (level >= fps.length) {
-            // 等级超出数组范围，取最后一个
-            iosMaxFps = (fps && fps.length > 0) ? fps[fps.length - 1] : 240
-        } else {
-            iosMaxFps = (fps && level < fps.length) ? fps[level] : 240
+        if (!mainPage.memberActivated || mainPage.memberActivationLevel === 0 || mainPage.isDailyTrial) {
+            var fps = mainPage.levelFps  // [0]=试用上限
+            var trialMax = (fps && fps.length > 0) ? fps[0] : 240
+            console.log("📊 getMaxFpsForQuality: 试用/未激活 → 上限 " + trialMax)
+            return trialMax
         }
-        
-        console.log("📊 getMaxFpsForQuality: type=" + qualityType + " level=" + level + " levelFps=" + JSON.stringify(fps) + " iosMaxFps=" + iosMaxFps)
-        
-        // ⭐ PC端等级额外限制：豪华版(1)及以下最大120，AI全能版(2)不限制
-        var pcMaxFps = (mainPage.pcActivationLevel >= 2) ? 999 : 120
 
-        var result = Math.min(iosMaxFps, pcMaxFps)
+        // 开通会员：不限制（返回大值，滑块 to:240 自然封顶）
+        return 999
 
-        // ⭐ 2026-07-15 修正：AI 工具锁 30 不应限制滑块可拖动范围（滑块该多高就多高，
-        //   会员等级/档位上限照旧），只应限制"实际下发给设备的值"。该逻辑已挪到
-        //   resolveSendFps()，在真正调用 HttpClient.updateFps/sendConfigUpdate("fps",...) 前拦截，
-        //   这里不再对 result 做 AI 相关 clamp。
-
-        return result
+        // ⭐ 2026-07-15 修正：AI 工具锁 30 不限制滑块可拖动范围，只限制"实际下发给设备的值"，
+        //   见 resolveSendFps()，在真正调用 HttpClient.updateFps/sendConfigUpdate("fps",...) 前拦截。
     }
 
     // ⭐ 2026-07-15：AI 工具锁 7fps 的唯一收口点——只影响"实际下发的值"，不影响滑块/档位上限。
@@ -8364,34 +8131,21 @@ Rectangle {
         return rawFps
     }
     
-    // ⭐ 获取超级帧率上限 - 全部从登录接口 levelExposureFps 动态获取
-    // levelExposureFps[0]=试用, [1]=高清, [2]=超清, [3]=超高清, [4]=超高帧
-    // 最终上限 = min(levelExposureFps[等级], PC端限制)
-    // PC端等级额外限制：豪华版(1)最大240，AI全能版(2)不限制
+    // ⭐ 获取快门(超级帧率cjfps)上限
+    // ⭐ 2026-08-14 简化：本版本会员等级只区分分辨率，快门不再按等级/PC版本设限——
+    //   开通会员一律不限制（给 1000，与后台曝光FPS放宽后的上限一致，滑块 to 再与 shutterCfg.max 取大）；
+    //   仅试用/未激活仍走 levelExposureFps[0]。
     function getMaxFlickerForQuality(qualityType) {
-        // ⭐ 从 levelExposureFps 数组读取 iOS 会员等级的超级帧率上限
-        var level = mainPage.memberActivationLevel
-        var efps = mainPage.levelExposureFps  // [试用, 高清, 超清, 超高清, 超高帧]
-        var iosMaxFlicker = 600  // 默认
-        
         // 试用(等级0) 或 日试用：取 levelExposureFps[0]
-        if (!mainPage.memberActivated || level === 0 || mainPage.isDailyTrial) {
-            iosMaxFlicker = (efps && efps.length > 0) ? efps[0] : 600
-        } else if (level >= efps.length) {
-            // 等级超出数组范围，取最后一个
-            iosMaxFlicker = (efps && efps.length > 0) ? efps[efps.length - 1] : 600
-        } else {
-            iosMaxFlicker = (efps && level < efps.length) ? efps[level] : 600
+        if (!mainPage.memberActivated || mainPage.memberActivationLevel === 0 || mainPage.isDailyTrial) {
+            var efps = mainPage.levelExposureFps  // [0]=试用上限
+            var trialMax = (efps && efps.length > 0) ? efps[0] : 600
+            console.log("📊 getMaxFlickerForQuality: 试用/未激活 → 上限 " + trialMax)
+            return trialMax
         }
-        
-        console.log("📊 getMaxFlickerForQuality: type=" + qualityType + " level=" + level + " levelExposureFps=" + JSON.stringify(efps) + " iosMaxFlicker=" + iosMaxFlicker)
-        
-        // ⭐ PC端等级额外限制：豪华版(1)及以下最大240，AI全能版(2)不限制
-        //   需求#10（2026-07-31）：999 → 1000（后台曝光FPS上限已放宽到 1000，999 会把 1000 压回去）
-        var pcMaxFlicker = (mainPage.pcActivationLevel >= 2) ? 1000 : 240
-        
-        // 取两者较小值
-        return Math.min(iosMaxFlicker, pcMaxFlicker)
+
+        // 开通会员：不限制
+        return 1000
     }
     
     // ⭐ 获取超级帧滑块最大值（只看会员等级）
@@ -8400,55 +8154,46 @@ Rectangle {
         return getMaxFlickerForQuality(iosCameraSettingsPopup.qualityType)
     }
     
-    // ⭐ UI显示名转换为服务器名称
+    // ⭐ UI显示名转换为服务器名称（2026-08-14 叫法对齐 java gstream；按 iOS 实采分辨率升序对位）
+    //   low=640x480 / ultra=1280x720 / high=1440x1080 / p4k=4K
     function uiQualityToServerName(uiName) {
         // UI名 → 服务器type
         switch (uiName) {
-            case "超低网": return "low"
-            case "高清": return "standard"
+            case "标清": return "low"
+            case "高清": return "ultra"
             case "超清": return "high"
-            case "超高清": return "p4k"
-            case "超高帧": return "ultra"
+            case "4K": return "p4k"
             default: return uiName
         }
     }
     
     // ⭐ 检查指定画质是否可用（会员等级限制）
-    // 等级规则：0=试用全开放, 1=高清/超低网, 2=超清, 3=超高帧, 4=超超清
-    // 高等级自动拥有低等级权限
+    // ⭐ 2026-08-14 对齐 java gstream / aihj 后端：等级只区分分辨率
+    //   0/未激活=试用全开放, 1=高清会员(标清+高清), 2=4K会员(全部)
+    //   优先用后端 CONFIG_STATE 下发的 qualityAccess 数组（与 java gstream 客户端逻辑一致）
     function isQualityAccessible(qualityName) {
-        // 超快帧特殊处理：需要等级4(超高帧)
-        if (qualityName === "超快帧") {
-            return mainPage.memberActivationLevel >= 4
-        }
-
         // 未激活（试用）：全部可用
         if (!mainPage.memberActivated || mainPage.memberActivationLevel === 0) {
             return true
         }
-        
+
+        // 方式一：后端下发的 qualityAccess 数组（["标清","高清"] 或 ["标清","高清","超清","4K"]）
+        var access = mainPage.memberQualityAccess
+        if (access && access.length > 0) {
+            return access.indexOf(qualityName) !== -1
+        }
+
+        // 方式二：按等级兜底判断
         var level = mainPage.memberActivationLevel
-        
-        // 等级4（超超清/p4k）：全部可用（包括超高帧）
-        if (level >= 4) {
+        if (level >= 2) {
+            // 4K会员：全部可用
             return true
         }
-        
-        // 等级3（超高帧/ultra）：可用超低网、高清、超清、超超清（不含超高帧）
-        if (level === 3) {
-            return qualityName === "超低网" || qualityName === "高清" || qualityName === "超清" || qualityName === "超高清"
-        }
-        
-        // 等级2（超清/high）：可用超低网、超清、高清
-        if (level === 2) {
-            return qualityName === "超低网" || qualityName === "高清" || qualityName === "超清"
-        }
-        
-        // 等级1（高清/standard）：可用超低网、高清
         if (level === 1) {
-            return qualityName === "超低网" || qualityName === "高清"
+            // 高清会员：标清、高清
+            return qualityName === "标清" || qualityName === "高清"
         }
-        
+
         // 默认全部可用
         return true
     }
@@ -8464,10 +8209,6 @@ Rectangle {
     }
     
     // ⭐ 根据档位获取默认综合亮度（内部值，UI显示值 = 内部值 ×100, 迷惑量级）
-    // 高清(standard): 20 (UI显示2000)
-    // 超清(high): 40 (UI显示4000)
-    // 超高清(p4k): 60 (UI显示6000)
-    // 超高帧(ultra): 80 (UI显示8000)
     function getDefaultExposureForQuality(qualityType) {
         // 所有档位综合亮度默认值都是 20
         return 20
@@ -8483,7 +8224,7 @@ Rectangle {
     function setExposureValue(value) {
         iosCameraSettingsPopup.exposureValue = value
         exposureSettingsPopup.exposureValue = value
-        exposureBiasSlider.value = value
+        if (typeof exposureBiasSlider !== 'undefined') exposureBiasSlider.value = value
         captureManager.exposure = value
         console.log("📊 综合亮度设置为: " + value + " (UI显示: " + (value * 100) + ")")
     }
@@ -8740,16 +8481,17 @@ Rectangle {
             iosCameraSettingsPopup.lensZoom = zoom
             iosCameraSettingsPopup.directionValue = direction
             
-            // 初始化底部档位按钮显示（支持多种格式）
-            var typeMap = {"low": "超低网", "standard": "高清", "high": "超清", "ultra": "超高帧", "p4k": "超高清", "4k": "超高清"}
+            // 初始化底部档位按钮显示（支持多种格式；2026-08-14 叫法对齐 java gstream）
+            // low 档菜单已移除，映射仅用于老设备/旧缓存残留时如实显示
+            var typeMap = {"low": "标清", "standard": "标清", "high": "超清", "ultra": "高清", "p4k": "4K", "4k": "4K"}
             var normalizedType = type.toLowerCase()
             if (normalizedType === "4k") normalizedType = "p4k"
-            qualityButtonText.text = typeMap[type] || typeMap[normalizedType] || "超清"
-            iosCameraSettingsPopup.qualityType = normalizedType || "high"
+            qualityButtonText.text = typeMap[type] || typeMap[normalizedType] || "高清"
+            iosCameraSettingsPopup.qualityType = normalizedType || "ultra"
             console.log("📥 初始化档位: type='" + type + "' -> '" + qualityButtonText.text + "'")
             
             // ⭐ 根据档位设置默认综合亮度
-            var defaultExposure = getDefaultExposureForQuality(normalizedType || "high")
+            var defaultExposure = getDefaultExposureForQuality(normalizedType || "ultra")
             setExposureValue(defaultExposure)
             sendConfigUpdate("exposureBias", {"exposureBias": defaultExposure})
         }
@@ -8820,18 +8562,18 @@ Rectangle {
         }
         var cachedType = HttpClient.getCachedQualityType()
         console.log("⭐ Component.onCompleted: 读取缓存 cachedType='" + cachedType + "'")
-        var typeMap = {"low": "超低网", "standard": "高清", "high": "超清", "ultra": "超高帧", "p4k": "超高清", "4k": "超高清"}
+        var typeMap = {"low": "标清", "standard": "标清", "high": "超清", "ultra": "高清", "p4k": "4K", "4k": "4K"}
         var mappedType = typeMap[cachedType]
         console.log("⭐ Component.onCompleted: typeMap[cachedType]='" + mappedType + "'")
         if (!mappedType && cachedType) {
             mappedType = typeMap[cachedType.toLowerCase()]
             console.log("⭐ Component.onCompleted: typeMap[toLowerCase]='" + mappedType + "'")
         }
-        qualityButtonText.text = mappedType || "超清"
+        qualityButtonText.text = mappedType || "高清"
         // 同步到相机设定
-        var normalizedType = cachedType ? cachedType.toLowerCase() : "high"
+        var normalizedType = cachedType ? cachedType.toLowerCase() : "ultra"
         if (normalizedType === "4k") normalizedType = "p4k"
-        iosCameraSettingsPopup.qualityType = normalizedType || "high"
+        iosCameraSettingsPopup.qualityType = normalizedType || "ultra"
         console.log("⭐ Component.onCompleted: 最终显示='" + qualityButtonText.text + "'")
 
         // ⭐ 2026-07-15：登录成功后自动核对"当前选中的iOS账号"（上次在切换账号里选定、
@@ -9432,8 +9174,8 @@ Rectangle {
             var networkQuality = state.networkQuality || ""
             
             // ⭐ 解析会员等级信息
-            // 等级规则：0=试用全开放, 1=高清, 2=超清, 3=超高帧, 4=超超清
-            // 高等级自动拥有低等级权限
+            // 等级规则（对齐 java gstream）：0=试用全开放, 1=高清(标清+高清), 2=4K(全部)
+            // 等级只区分分辨率，帧率/快门等参数会员一律不限
             var memberLevelChanged = false
             if (state.activated !== undefined) {
                 mainPage.memberActivated = state.activated
@@ -9698,12 +9440,12 @@ Rectangle {
             if (ptype === "type" || (shouldUpdateAll && config.type !== undefined)) {
                 // 更新画质类型
                 if (config.type !== undefined) {
-                    var typeMap = {"low": "超低网", "standard": "高清", "high": "超清", "ultra": "超高帧", "p4k": "超高清", "4k": "超高清"}
+                    var typeMap = {"low": "标清", "standard": "标清", "high": "超清", "ultra": "高清", "p4k": "4K", "4k": "4K"}
                     var normalizedQType = config.type.toLowerCase()
                     if (normalizedQType === "4k") normalizedQType = "p4k"
-                    qualityButtonText.text = typeMap[config.type] || typeMap[normalizedQType] || "超清"
+                    qualityButtonText.text = typeMap[config.type] || typeMap[normalizedQType] || "高清"
                     // ⭐ 同步更新 qualityType，避免底部按钮与设定弹窗不一致
-                    iosCameraSettingsPopup.qualityType = normalizedQType || "high"
+                    iosCameraSettingsPopup.qualityType = normalizedQType || "ultra"
                 }
             }
             
@@ -9979,14 +9721,16 @@ Rectangle {
     }
     
     // ============ 扫码绑定 Popup ============
+    // ⭐ 2026-08-14 样式对齐 java gstream DeviceBindingDialog：
+    //   #2b2b2b 标题栏（「设备绑定」+ ×）、#1f1f1f 内容区、#e8e8e8 浅灰二维码底、上下灰色提示文字
     Popup {
         id: scanBindPopup
         parent: Overlay.overlay
-        width: 224
-        height: 224
+        width: 320
+        height: 344
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        padding: 12
+        padding: 0
         
         property string qrCodeContent: ""
         
@@ -9999,33 +9743,123 @@ Rectangle {
         }
         
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 4
-            border.color: "#A5D6A7"
-            border.width: 1
+            color: "#2b2b2b"
+            radius: 12
         }
         
-        contentItem: Rectangle {
-            width: 200
-            height: 200
-            color: "#FFFFFF"
+        contentItem: Column {
+            spacing: 0
             
-            QRCodeGenerator {
-                id: qrCode
-                anchors.fill: parent
-                text: scanBindPopup.qrCodeContent
-                foreground: "#000000"
-                background: "#FFFFFF"
-                margin: 2
+            // 标题栏（同 java：#2b2b2b，「设备绑定」白 16 bold + × 关闭）
+            Item {
+                width: parent.width
+                height: 44
+                
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "设备绑定"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 16
+                    font.bold: true
+                    color: "#FFFFFF"
+                }
+                
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: scanCloseArea.containsMouse ? "#ef4444" : "transparent"
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: "#FFFFFF"
+                    }
+                    
+                    MouseArea {
+                        id: scanCloseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: scanBindPopup.close()
+                    }
+                }
             }
             
-            // 加载中
-            Text {
-                anchors.centerIn: parent
-                text: "加载中..."
-                font.pixelSize: 14
-                color: "#666666"
-                visible: scanBindPopup.qrCodeContent === ""
+            // 内容区（同 java：#1f1f1f，提示 + 二维码 + 底部提示）
+            Rectangle {
+                width: parent.width
+                height: scanBindPopup.height - 44
+                color: "#1f1f1f"
+                radius: 12
+                
+                // 顶部两角保持直角（只让底部圆角生效）
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 12
+                    color: "#1f1f1f"
+                }
+                
+                Column {
+                    anchors.top: parent.top
+                    anchors.topMargin: 16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 15
+                    
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "请使用iOS设备扫描二维码"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 12
+                        color: "#9ca3af"
+                    }
+                    
+                    // 二维码容器（同 java：柔和浅灰 #e8e8e8，不刺眼）
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 180
+                        height: 180
+                        radius: 8
+                        color: "#e8e8e8"
+                        
+                        QRCodeGenerator {
+                            id: qrCode
+                            anchors.centerIn: parent
+                            width: 160
+                            height: 160
+                            text: scanBindPopup.qrCodeContent
+                            foreground: "#000000"
+                            background: "#e8e8e8"
+                            margin: 2
+                        }
+                        
+                        // 加载中
+                        Text {
+                            anchors.centerIn: parent
+                            text: "加载中..."
+                            font.pixelSize: 14
+                            color: "#666666"
+                            visible: scanBindPopup.qrCodeContent === ""
+                        }
+                    }
+                    
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "扫码后在iOS设备上确认绑定"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 11
+                        color: "#6b7280"
+                    }
+                }
             }
         }
     }
@@ -10043,11 +9877,10 @@ Rectangle {
         property string errorText: ""
         property bool isBinding: false
         
+        // ⭐ 2026-08-14 样式对齐 java gstream 手动绑定弹窗：#1F1F1F 底、白字、#292929 输入框
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#A5D6A7"
-            border.width: 1
+            color: "#1F1F1F"
+            radius: 12
         }
         
         header: Item {
@@ -10059,17 +9892,9 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "手动绑定设备"
                 font.family: "PingFang HK"
-                font.pixelSize: 16
+                font.pixelSize: 18
                 font.bold: true
-                color: "#263238"
-            }
-            
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                color: "#C8E6C9"
+                color: "#FAFAFA"
             }
         }
         
@@ -10082,7 +9907,7 @@ Rectangle {
                 text: "请输入设备端的账号前8位和密码进行绑定"
                 font.family: "PingFang HK"
                 font.pixelSize: 13
-                color: "#666666"
+                color: "#64748b"
             }
             
             // 设备账号前8位
@@ -10094,7 +9919,7 @@ Rectangle {
                     text: "设备端账号前8位"
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#333333"
+                    color: "#FAFAFA"
                 }
                 
                 TextField {
@@ -10102,12 +9927,12 @@ Rectangle {
                     width: parent.width
                     height: 40
                     placeholderText: "请输入账号前8位"
-                    color: "#263238"
-                    placeholderTextColor: "#999999"
+                    color: "#FAFAFA"
+                    placeholderTextColor: "#64748b"
                     background: Rectangle {
-                        color: "#E8F5E9"
-                        radius: 6
-                        border.color: deviceNicknameField.activeFocus ? "#607AFB" : "#E0E0E0"
+                        color: "#292929"
+                        radius: 8
+                        border.color: deviceNicknameField.activeFocus ? "#607AFB" : "#3a3a3a"
                         border.width: 1
                     }
                     leftPadding: 12
@@ -10125,7 +9950,7 @@ Rectangle {
                     text: "绑定密码"
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#333333"
+                    color: "#FAFAFA"
                 }
 
                 TextField {
@@ -10134,12 +9959,12 @@ Rectangle {
                     height: 40
                     placeholderText: "请输入绑定密码"
                     echoMode: TextInput.Password
-                    color: "#263238"
-                    placeholderTextColor: "#999999"
+                    color: "#FAFAFA"
+                    placeholderTextColor: "#64748b"
                     background: Rectangle {
-                        color: "#E8F5E9"
-                        radius: 6
-                        border.color: secondaryPasswordField.activeFocus ? "#607AFB" : "#E0E0E0"
+                        color: "#292929"
+                        radius: 8
+                        border.color: secondaryPasswordField.activeFocus ? "#607AFB" : "#3a3a3a"
                         border.width: 1
                     }
                     leftPadding: 12
@@ -10161,35 +9986,25 @@ Rectangle {
         footer: Item {
             height: 56
             
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                height: 1
-                color: "#C8E6C9"
-            }
-            
             Row {
                 anchors.right: parent.right
                 anchors.rightMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 12
                 
-                // 取消按钮
+                // 取消按钮（同 java：#292929 白字，hover #374151）
                 Rectangle {
                     width: 72
                     height: 32
-                    color: cancelBtnMouse.containsMouse ? "#F0F0F0" : "#FFFFFF"
-                    radius: 6
-                    border.color: "#A5D6A7"
-                    border.width: 1
+                    color: cancelBtnMouse.containsMouse ? "#374151" : "#292929"
+                    radius: 8
                     
                     Text {
                         anchors.centerIn: parent
                         text: "取消"
                         font.family: "PingFang HK"
                         font.pixelSize: 14
-                        color: "#263238"
+                        color: "#FAFAFA"
                     }
                     
                     MouseArea {
@@ -10201,12 +10016,12 @@ Rectangle {
                     }
                 }
                 
-                // 绑定按钮
+                // 绑定按钮（同 java：#607AFB，hover #4f6af0）
                 Rectangle {
                     width: 72
                     height: 32
                     color: manualBindDialog.isBinding ? "#A0B0FF" : (bindBtnMouse.containsMouse ? "#4f6af0" : "#607AFB")
-                    radius: 6
+                    radius: 8
                     
                     Text {
                         anchors.centerIn: parent
@@ -10719,11 +10534,7 @@ Rectangle {
             
             onWheel: function(wheel) {
                 if (mainPage.sKeyPressed) {
-                    // ⭐ PC等级1(豪华版)：禁用全屏查看局部放大
-                    if (mainPage.pcActivationLevel < 2) {
-                        console.log("🔒 全屏局部放大需要AI全能版")
-                        return
-                    }
+                    // ⭐ 2026-08-14：PC 端已改单版本，去掉等级门槛
                     // ⭐ S + 滚轮：以鼠标位置为中心缩放
                     var oldZoom = fullscreenZoom
                     var delta = wheel.angleDelta.y > 0 ? 0.2 : -0.2
@@ -10983,6 +10794,7 @@ Rectangle {
 
         // ⭐ 2026-07-16：截图单张放大——底部切帧进度条（样式与慢放底部进度条一致），鼠标靠近底部才显示。
         //   拖动=只切当前这一张；Ctrl+拖动=广播给全 grid 同步切帧（跟 Ctrl+滚轮效果一致）。
+        // ⭐ 2026-08-14 需求：A 键放大后不再显示滑动条（代码保留，滚轮/左右键切帧不受影响）
         Rectangle {
             id: fullscreenProgressBar
             anchors.left: parent.left
@@ -10990,7 +10802,7 @@ Rectangle {
             anchors.bottom: parent.bottom
             height: 88  // ⭐ 2026-07-16：放大一倍（原 44）
             color: "#80000000"
-            visible: captureManager.getTotalFrames(fullscreenItemIndex) > 0 && fullscreenViewer.progressBarHovered
+            visible: false  // 原：captureManager.getTotalFrames(fullscreenItemIndex) > 0 && fullscreenViewer.progressBarHovered
 
             RowLayout {
                 anchors.fill: parent
@@ -11784,6 +11596,7 @@ Rectangle {
 
         // ⭐ 2026-07-16：A键放大——底部切帧进度条，鼠标靠近底部才显示。拖动=只切当前这一张；
         //   Ctrl+拖动=本列所有 item 同步切帧（跟 Ctrl+滚轮效果一致，复用现成的 columnPreviewPrevFrame/NextFrame）。
+        // ⭐ 2026-08-14 需求：A 键放大后不再显示滑动条（代码保留）
         Rectangle {
             id: columnPreviewZoomProgressBar
             anchors.left: parent.left
@@ -11791,7 +11604,7 @@ Rectangle {
             anchors.bottom: parent.bottom
             height: 88  // ⭐ 2026-07-16：放大一倍（原 44）
             color: "#80000000"
-            visible: columnPreviewZoomOverlay.zoomTotalFrames > 0 && columnPreviewZoomOverlay.progressBarHovered
+            visible: false  // 原：columnPreviewZoomOverlay.zoomTotalFrames > 0 && columnPreviewZoomOverlay.progressBarHovered
 
             RowLayout {
                 anchors.fill: parent
@@ -11906,9 +11719,10 @@ Rectangle {
     
     // ============ 快捷键处理（使用 Shortcut 组件更可靠）============
     
-    // Grid全屏快捷键
+    // Grid全屏快捷键（2026-08-14 需求：老 java gstream 没有抓拍全屏 → 不触发，代码保留）
     Shortcut {
         sequence: ShortcutStore.gridFullscreenKey
+        enabled: false
         onActivated: toggleGridFullscreen()
     }
     
@@ -12174,10 +11988,11 @@ Rectangle {
         property bool isLoading: false
         property var currentDevices: deviceMap[currentUsername] || []
 
+        // ⭐ 2026-08-15 需求：去掉标题栏「设备号」显示，圆角放大到 50
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#A5D6A7"
+            color: "#1F1F1F"
+            radius: 50
+            border.color: "#3A3A3A"
             border.width: 1
         }
         
@@ -12186,7 +12001,7 @@ Rectangle {
 
             Row {
                 anchors.left: parent.left
-                anchors.leftMargin: 20
+                anchors.leftMargin: 36
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
@@ -12195,15 +12010,7 @@ Rectangle {
                     font.family: "PingFang HK"
                     font.pixelSize: 18
                     font.bold: true
-                    color: "#263238"
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                    text: "设备号: " + HttpClient.pcDeviceId()
-                    font.family: "PingFang HK"
-                    font.pixelSize: 12
-                    color: "#888888"
+                    color: "#FAFAFA"
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -12216,13 +12023,13 @@ Rectangle {
                 width: 60
                 height: 28
                 radius: 4
-                color: switchRefreshBtnArea.containsMouse ? "#C8E6C9" : "#E8F5E9"
+                color: switchRefreshBtnArea.containsMouse ? "#374151" : "#292929"
                 
                 Text {
                     anchors.centerIn: parent
                     text: switchAccountDialog.isLoading ? "加载中" : "🔄 刷新"
                     font.pixelSize: 12
-                    color: "#666666"
+                    color: "#FAFAFA"
                 }
                 
                 MouseArea {
@@ -12238,22 +12045,22 @@ Rectangle {
                 }
             }
             
-            // 关闭按钮
+            // 关闭按钮（圆角50后往里挪，避免压到弧线）
             Rectangle {
                 id: switchCloseBtn
                 anchors.right: parent.right
-                anchors.rightMargin: 12
+                anchors.rightMargin: 28
                 anchors.verticalCenter: parent.verticalCenter
                 width: 28
                 height: 28
                 radius: 14
-                color: switchCloseArea.containsMouse ? "#F0F0F0" : "transparent"
+                color: switchCloseArea.containsMouse ? "#374151" : "transparent"
                 
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
                     font.pixelSize: 14
-                    color: "#666666"
+                    color: "#FAFAFA"
                 }
                 
                 MouseArea {
@@ -12269,7 +12076,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#C8E6C9"
+                color: "#3A3A3A"
             }
         }
         
@@ -12284,8 +12091,8 @@ Rectangle {
                     width: parent.width
                     height: 60
                     radius: 8
-                    color: "#F0F5FA"
-                    border.color: "#3993D2"
+                    color: "#2a3a5a"
+                    border.color: "#607AFB"
                     border.width: 2
                     
                     RowLayout {
@@ -12303,7 +12110,7 @@ Rectangle {
                             
                             Image {
                                 anchors.fill: parent
-                                source: "images/avatar.png"
+                                source: "images/head.png"
                                 fillMode: Image.PreserveAspectCrop
                             }
                         }
@@ -12318,7 +12125,7 @@ Rectangle {
                                 font.family: "PingFang HK"
                                 font.pixelSize: 15
                                 font.bold: true
-                                color: "#263238"
+                                color: "#FFFFFF"
                             }
                             
                             Text {
@@ -12335,7 +12142,7 @@ Rectangle {
                                     : "未绑定设备"
                                 font.family: "PingFang HK"
                                 font.pixelSize: 12
-                                color: "#546E7A"
+                                color: "#64748b"
                             }
                         }
                         
@@ -12344,7 +12151,7 @@ Rectangle {
                             width: 50
                             height: 22
                             radius: 11
-                            color: "#3993D2"
+                            color: "#607AFB"
                             
                             Text {
                                 anchors.centerIn: parent
@@ -12362,7 +12169,7 @@ Rectangle {
                     font.family: "PingFang HK"
                     font.pixelSize: 14
                     font.bold: true
-                    color: "#333333"
+                    color: "#FAFAFA"
                     visible: switchAccountDialog.currentDevices.length > 0
                 }
                 
@@ -12380,7 +12187,7 @@ Rectangle {
                         width: deviceListView.width
                         height: 48
                         radius: 6
-                        color: deviceItemMouseArea.containsMouse ? "#F5F8FA" : "#FAFAFA"
+                        color: deviceItemMouseArea.containsMouse ? "#3a3a3a" : "#1F1F1F"
                         // ⭐ 当前使用的判断：必须是当前登录账号 + 当前设备
                         // 注意：switchAccountDialog.currentUsername 是选中的标签页账号
                         // HttpClient.getSavedUsername() 是真正登录的账号
@@ -12391,7 +12198,7 @@ Rectangle {
                             return switchAccountDialog.currentUsername === loggedInUsername && 
                                    modelData.deviceUsername === loggedInDeviceUsername
                         }
-                        border.color: isCurrentDevice ? "#3993D2" : "#E8E8E8"
+                        border.color: isCurrentDevice ? "#607AFB" : "#3A3A3A"
                         border.width: isCurrentDevice ? 2 : 1
                         property string deviceDisplayName: {
                             var baseName = modelData.deviceNickname || modelData.deviceUsername || "未知设备"
@@ -12414,7 +12221,7 @@ Rectangle {
                                 width: 8
                                 height: 8
                                 radius: 4
-                                color: modelData.online ? "#4CAF50" : "#CCCCCC"
+                                color: modelData.online ? "#34C759" : "#666666"
                             }
 
                             // 设备名称
@@ -12423,16 +12230,13 @@ Rectangle {
                                 text: deviceItem.deviceDisplayName
                                 font.family: "PingFang HK"
                                 font.pixelSize: 13
-                                color: "#263238"
+                                color: "#FFFFFF"
                                 elide: Text.ElideRight
                             }
 
-                            // ⭐ 设备激活等级徽章 — 跟 PC 客户端的 quality_type / memberActivationLevel 口径对齐
-                            //   注意: 后端 User.getActivationLevelName 给的是"标清/高清/超清/4K", 跟 PC 客户端不一致
-                            //         所以这里 NOT 用 modelData.activationLevelName, 而是从 activationLevel 整数自己映射:
-                            //         0=试用, 1=高清, 2=超清, 3=超高清, 4=超高帧
-                            //         (跟 mainPage.memberActivationLevel 的注释、相机设定档位的 5 个按钮完全一致)
-                            //   颜色按等级递进: 试用=灰, 高清=绿, 超清=蓝, 超高清=橙, 超高帧=红
+                            // ⭐ 设备激活等级徽章 — 2026-08-14 叫法对齐 java gstream / aihj 后端
+                            //   等级只区分分辨率：0=试用, 1=高清, 2=4K（与后端 User.getActivationLevelName 一致）
+                            //   颜色: 试用=灰, 高清=绿, 4K=橙
                             Rectangle {
                                 visible: modelData.activationLevel !== undefined && modelData.activationLevel !== null
                                 width: levelBadgeText.implicitWidth + 12
@@ -12442,24 +12246,18 @@ Rectangle {
                                 property string lvlText: {
                                     switch (lvl) {
                                         case 1: return "高清"
-                                        case 2: return "超清"
-                                        case 3: return "超高清"
-                                        case 4: return "超高帧"
+                                        case 2: return "4K"
                                         default: return "试用"
                                     }
                                 }
                                 color: {
-                                    if (lvl >= 4) return "#FFEBEE"   // 超高帧 — 浅红
-                                    if (lvl === 3) return "#FFF3E0"  // 超高清 — 浅橙
-                                    if (lvl === 2) return "#E3F2FD"  // 超清 — 浅蓝
+                                    if (lvl >= 2) return "#FFF3E0"   // 4K — 浅橙
                                     if (lvl === 1) return "#E8F5E9"  // 高清 — 浅绿
                                     return "#F0F0F0"                  // 试用 — 灰
                                 }
                                 border.width: 1
                                 border.color: {
-                                    if (lvl >= 4) return "#E57373"
-                                    if (lvl === 3) return "#FFB74D"
-                                    if (lvl === 2) return "#64B5F6"
+                                    if (lvl >= 2) return "#FFB74D"
                                     if (lvl === 1) return "#81C784"
                                     return "#BDBDBD"
                                 }
@@ -12488,13 +12286,13 @@ Rectangle {
                                 width: 60
                                 height: 20
                                 radius: 10
-                                color: "#E8F4FD"
+                                color: "#2a3a5a"
                                 
                                 Text {
                                     anchors.centerIn: parent
                                     text: "当前使用"
                                     font.pixelSize: 10
-                                    color: "#3993D2"
+                                    color: "#607AFB"
                                 }
                             }
                             
@@ -12505,13 +12303,13 @@ Rectangle {
                                 width: 36
                                 height: 24
                                 radius: 4
-                                color: remarkBtnMouseArea.containsMouse ? "#E8E8E8" : "transparent"
+                                color: remarkBtnMouseArea.containsMouse ? "#4a4a4a" : "#3a3a3a"
                                 
                                 Text {
                                     anchors.centerIn: parent
                                     text: "备注"
                                     font.pixelSize: 11
-                                    color: "#546E7A"
+                                    color: remarkBtnMouseArea.containsMouse ? "#FFFFFF" : "#94a3b8"
                                 }
                                 
                                 MouseArea {
@@ -12530,47 +12328,19 @@ Rectangle {
                                 }
                             }
                             
-                            // 修改密码按钮
+                            // ⭐ 2026-08-14 aihj：隐藏「修改密码」（aihj 后端无 /binding/change-device-password），换成「解绑」文字按钮对齐老 java gstream
+                            //   解绑接口仍在：POST /api/binding/windows-unbind/{bindingId}（ai-device-control-demo DeviceBindingController）
                             Rectangle {
-                                width: 60
+                                width: 44
                                 height: 24
                                 radius: 4
-                                color: securityBtnMouseArea.containsMouse ? "#E8F4FD" : "transparent"
+                                color: unbindBtnMouseArea.containsMouse ? "#4a4a4a" : "#3a3a3a"
                                 
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "修改密码"
+                                    text: "解绑"
                                     font.pixelSize: 11
-                                    color: "#3993D2"
-                                }
-                                
-                                MouseArea {
-                                    id: securityBtnMouseArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        showChangePasswordDialog(
-                                            switchAccountDialog.currentUsername,
-                                            modelData.deviceUsername || "",
-                                            modelData.deviceNickname || modelData.deviceUsername || "未知设备"
-                                        )
-                                    }
-                                }
-                            }
-                            
-                            // 解绑按钮（x号）
-                            Rectangle {
-                                width: 24
-                                height: 24
-                                radius: 12
-                                color: unbindBtnMouseArea.containsMouse ? "#FFEEEE" : "transparent"
-                                
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "✕"
-                                    font.pixelSize: 14
-                                    color: unbindBtnMouseArea.containsMouse ? "#CC0000" : "#999999"
+                                    color: unbindBtnMouseArea.containsMouse ? "#FFFFFF" : "#94a3b8"
                                 }
                                 
                                 MouseArea {
@@ -12618,14 +12388,14 @@ Rectangle {
                     text: "暂无绑定设备"
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#999999"
+                    color: "#64748b"
                 }
             }
             
             // 加载中提示
             Rectangle {
                 anchors.fill: parent
-                color: "#80FFFFFF"
+                color: "#CC1F1F1F"
                 visible: switchAccountDialog.isLoading
                 
                 Text {
@@ -12633,7 +12403,7 @@ Rectangle {
                     text: "正在加载设备信息..."
                     font.family: "PingFang HK"
                     font.pixelSize: 14
-                    color: "#666666"
+                    color: "#FAFAFA"
                 }
             }
         }
@@ -12762,9 +12532,9 @@ Rectangle {
         property string deviceName: ""
         
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#A5D6A7"
+            color: "#1F1F1F"
+            radius: 12
+            border.color: "#3A3A3A"
             border.width: 1
         }
         
@@ -12779,7 +12549,7 @@ Rectangle {
                 font.family: "PingFang HK"
                 font.pixelSize: 16
                 font.bold: true
-                color: "#263238"
+                color: "#FAFAFA"
                 elide: Text.ElideRight
                 width: parent.width - 60
             }
@@ -12791,13 +12561,13 @@ Rectangle {
                 width: 28
                 height: 28
                 radius: 14
-                color: remarkCloseArea.containsMouse ? "#F0F0F0" : "transparent"
+                color: remarkCloseArea.containsMouse ? "#3A3A3A" : "transparent"
                 
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
                     font.pixelSize: 14
-                    color: "#666666"
+                    color: "#AAAAAA"
                 }
                 
                 MouseArea {
@@ -12813,7 +12583,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#C8E6C9"
+                color: "#3A3A3A"
             }
         }
         
@@ -12826,12 +12596,14 @@ Rectangle {
                 width: parent.width - 40
                 height: 40
                 placeholderText: "请输入备注（可为空）"
+                placeholderTextColor: "#777777"
                 text: remarkDialog.currentRemark
                 font.pixelSize: 14
+                color: "#FAFAFA"
                 background: Rectangle {
-                    color: "#E8F5E9"
+                    color: "#2A2A2A"
                     radius: 4
-                    border.color: remarkInput.activeFocus ? "#3993D2" : "#E0E0E0"
+                    border.color: remarkInput.activeFocus ? "#3993D2" : "#3A3A3A"
                     border.width: 1
                 }
             }
@@ -12844,13 +12616,13 @@ Rectangle {
                     width: 100
                     height: 36
                     radius: 4
-                    color: remarkCancelArea.containsMouse ? "#E8E8E8" : "#F0F0F0"
+                    color: remarkCancelArea.containsMouse ? "#3A3A3A" : "#2A2A2A"
                     
                     Text {
                         anchors.centerIn: parent
                         text: "取消"
                         font.pixelSize: 14
-                        color: "#546E7A"
+                        color: "#CCCCCC"
                     }
                     
                     MouseArea {
@@ -13527,32 +13299,34 @@ Rectangle {
     }
     
     // ============ 抓拍清空确认对话框 ============
+    // ⭐ 2026-08-14 对齐老 Java 深色风格（同「确认解绑」弹框：#1F1F1F 底/#3A3A3A 边框/#FAFAFA 文字）
+    // ⭐ 2026-08-15 需求：弹框加大、说明字体加大、层次感分明（主句大字加粗 / 提示小字弱化分行）
     Dialog {
         id: clearCaptureConfirmDialog
         anchors.centerIn: parent
-        width: 320
-        height: 180
+        width: 440
+        height: 250
         modal: true
         
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#A5D6A7"
+            color: "#1F1F1F"
+            radius: 12
+            border.color: "#3A3A3A"
             border.width: 1
         }
         
         header: Item {
-            height: 50
+            height: 56
             
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 20
+                anchors.leftMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
                 text: "确认清空"
                 font.family: "PingFang HK"
-                font.pixelSize: 16
+                font.pixelSize: 19
                 font.bold: true
-                color: "#263238"
+                color: "#FAFAFA"
             }
             
             Rectangle {
@@ -13562,13 +13336,13 @@ Rectangle {
                 width: 28
                 height: 28
                 radius: 14
-                color: clearCaptureCloseArea.containsMouse ? "#F0F0F0" : "transparent"
+                color: clearCaptureCloseArea.containsMouse ? "#3A3A3A" : "transparent"
                 
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
                     font.pixelSize: 14
-                    color: "#666666"
+                    color: "#999999"
                 }
                 
                 MouseArea {
@@ -13584,41 +13358,56 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#C8E6C9"
+                color: "#3A3A3A"
             }
         }
         
         contentItem: Column {
-            spacing: 16
-            padding: 20
+            spacing: 10
+            padding: 24
             
+            // 主句：大字加粗，最醒目
             Text {
-                width: parent.width - 40
-                // ⭐ 需求#8：红字标注空格键
-                text: "确定要清空所有抓拍内容吗？<br><font color='#E53935'>提示：按 空格键 可直接确认清空</font>"
-                textFormat: Text.RichText
+                width: parent.width - 48
+                text: "确定要清空所有抓拍内容吗？"
                 font.family: "PingFang HK"
-                font.pixelSize: 14
-                color: "#333333"
+                font.pixelSize: 18
+                font.bold: true
+                color: "#FAFAFA"
                 wrapMode: Text.Wrap
             }
             
+            // 提示：小一号、弱化色，与主句拉开层次（⭐ 需求#8 红字空格键提示保留）
+            Text {
+                width: parent.width - 48
+                text: "提示：按 <font color='#E53935'><b>空格键</b></font> 可直接确认清空"
+                textFormat: Text.RichText
+                font.family: "PingFang HK"
+                font.pixelSize: 14
+                color: "#999999"
+                wrapMode: Text.Wrap
+            }
+            
+            Item { width: 1; height: 8 }
+            
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 16
+                spacing: 20
                 
                 Rectangle {
-                    width: 100
-                    height: 36
-                    radius: 4
-                    color: clearCaptureCancelArea.containsMouse ? "#E8E8E8" : "#F0F0F0"
+                    width: 120
+                    height: 42
+                    radius: 6
+                    color: clearCaptureCancelArea.containsMouse ? "#3A3A3A" : "#292929"
+                    border.color: "#3A3A3A"
+                    border.width: 1
                     
                     Text {
                         anchors.centerIn: parent
                         text: "取消"
                         font.family: "PingFang HK"
-                        font.pixelSize: 14
-                        color: "#546E7A"
+                        font.pixelSize: 15
+                        color: "#CCCCCC"
                     }
                     
                     MouseArea {
@@ -13631,17 +13420,18 @@ Rectangle {
                 }
                 
                 Rectangle {
-                    width: 100
-                    height: 36
-                    radius: 4
+                    width: 120
+                    height: 42
+                    radius: 6
                     color: clearCaptureConfirmArea.containsMouse ? "#D32F2F" : "#E53935"
                     
                     Text {
                         anchors.centerIn: parent
-                        // ⭐ 需求#8（2026-07-31）：标注空格键快捷方式（Space 快捷键早已支持，见 Shortcut "Space"）
-                        text: "确认清空(空格键)"
+                        // ⭐ 2026-08-14：去掉「(空格键)」字样（Space 快捷键仍有效，弹框内红字有提示）
+                        text: "确认清空"
                         font.family: "PingFang HK"
-                        font.pixelSize: 14
+                        font.pixelSize: 15
+                        font.bold: true
                         color: "#FFFFFF"
                     }
                     
@@ -13675,9 +13465,9 @@ Rectangle {
         property string deviceName: ""
         
         background: Rectangle {
-            color: "#FFFFFF"
-            radius: 8
-            border.color: "#A5D6A7"
+            color: "#1F1F1F"
+            radius: 12
+            border.color: "#3A3A3A"
             border.width: 1
         }
         
@@ -13692,7 +13482,7 @@ Rectangle {
                 font.family: "PingFang HK"
                 font.pixelSize: 16
                 font.bold: true
-                color: "#263238"
+                color: "#FAFAFA"
             }
             
             Rectangle {
@@ -13702,13 +13492,13 @@ Rectangle {
                 width: 28
                 height: 28
                 radius: 14
-                color: unbindCloseArea.containsMouse ? "#F0F0F0" : "transparent"
+                color: unbindCloseArea.containsMouse ? "#3A3A3A" : "transparent"
                 
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
                     font.pixelSize: 14
-                    color: "#666666"
+                    color: "#AAAAAA"
                 }
                 
                 MouseArea {
@@ -13724,7 +13514,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#C8E6C9"
+                color: "#3A3A3A"
             }
         }
         
@@ -13737,7 +13527,7 @@ Rectangle {
                 text: "确定要解绑设备「" + unbindConfirmDialog.deviceName + "」吗？\n解绑后需要重新在iOS端扫码或手动绑定。"
                 font.family: "PingFang HK"
                 font.pixelSize: 14
-                color: "#333333"
+                color: "#DDDDDD"
                 wrapMode: Text.WordWrap
             }
             
@@ -13749,13 +13539,13 @@ Rectangle {
                     width: 100
                     height: 36
                     radius: 4
-                    color: unbindCancelArea.containsMouse ? "#E8E8E8" : "#F0F0F0"
+                    color: unbindCancelArea.containsMouse ? "#3A3A3A" : "#2A2A2A"
                     
                     Text {
                         anchors.centerIn: parent
                         text: "取消"
                         font.pixelSize: 14
-                        color: "#546E7A"
+                        color: "#CCCCCC"
                     }
                     
                     MouseArea {
@@ -13887,8 +13677,8 @@ Rectangle {
         captureManager.clearAll()
         
         // ⭐ 重置档位显示（避免残留上一账号的档位）
-        iosCameraSettingsPopup.qualityType = "high"
-        qualityButtonText.text = "超清"
+        iosCameraSettingsPopup.qualityType = "ultra"
+        qualityButtonText.text = "高清"
 
         // ⭐ 第五十章：相机能力跟着设备走，切账号一律清空重拉
         CameraCapsStore.clear()
@@ -13944,8 +13734,8 @@ Rectangle {
         captureManager.clearAll()
         
         // ⭐ 重置档位显示（避免残留上一账号的档位）
-        iosCameraSettingsPopup.qualityType = "high"
-        qualityButtonText.text = "超清"
+        iosCameraSettingsPopup.qualityType = "ultra"
+        qualityButtonText.text = "高清"
 
         // ⭐ 第五十章：相机能力跟着设备走——切设备必须清空并关掉 OTG 面板，
         //   新设备的 CONFIG_STATE 一到（cameraMode/capsVersion）会自动重新索要
@@ -14244,6 +14034,8 @@ Rectangle {
                 iosFilterPopup.fBlackPoint       = c.blackPoint.locked
             }
             iosCameraSettingsPopup.hardwareBrightness = Math.round(iosFilterPopup.fGain)
+            if (typeof isoSlider !== 'undefined')
+                isoSlider.value = iosCameraSettingsPopup.hardwareBrightness
             console.log("✅ [iOS-Filter] 已应用后台默认值")
 
             syncIndividualParamUiFromFilter()

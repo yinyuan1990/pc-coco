@@ -1,5 +1,4 @@
 #include "httpclient.h"
-#include "zjcinstaller.h"
 #include <QNetworkRequest>
 #include <QUrlQuery>
 #include <QDebug>
@@ -21,10 +20,11 @@
 
 HttpClient* HttpClient::s_instance = nullptr;
 
-// ⭐ 2026-07-11：本机是否装了主流 AI 编程工具（结果由 ZjcInstaller 内部缓存，多次调用不重复扫描）
+// ⭐ zjc_worker/流量整形整套已移除（aihj 版只留 SRS 拉流核心）：AI 编程工具检测（原用于
+//   fps 锁 7 的 DRM）随之下线，恒返回 false，QML 里相关分支自然变成空操作。
 bool HttpClient::aiCodingToolsDetected() const
 {
-    return ZjcInstaller::detectAiCodingTools(nullptr);
+    return false;
 }
 
 HttpClient* HttpClient::instance()
@@ -38,7 +38,8 @@ HttpClient* HttpClient::instance()
 HttpClient::HttpClient(QObject *parent)
     : QObject(parent)
     , m_manager(new QNetworkAccessManager(this))
-    , m_baseUrl("https://api.147258yql.cn")
+    // ⭐ 2026-08-13 换 aihj 后端域名（与 coco-ios APIConfig 一致）
+    , m_baseUrl("https://api.cocoaihj.com")
 {
     // ⭐ 构造时立即生成设备ID，确保登录页面能显示
     m_pcDeviceId = generatePcDeviceId();
@@ -95,8 +96,8 @@ void HttpClient::setAuthToken(const QString &token)
 
 QString HttpClient::websocketUrl() const
 {
-    // WebSocket 使用独立域名
-    return "wss://ws.147258yql.cn/ws";
+    // WebSocket 使用独立域名（aihj，与 coco-ios baseStompWsURL 一致）
+    return "wss://ws.cocoaihj.com/ws";
 }
 
 QString HttpClient::buildUrl(const QString &endpoint) const
@@ -126,7 +127,7 @@ QNetworkReply* HttpClient::post(const QString &endpoint, const QJsonObject &body
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json; charset=utf-8");
     request.setRawHeader("Accept", "application/json");
-    request.setRawHeader("User-Agent", "Aifs/1.0 (Windows; Qt)");
+    request.setRawHeader("User-Agent", "HuanJing/1.0 (Windows; Qt)");
     // ⭐ §53.22-附：所有 API 都是小 JSON，15s 还没完成 = 连接已死（实测登录曾干等 19.5s
     //   才报"连接已关闭"）。快速失败，把恢复动作交给上层重试。
     request.setTransferTimeout(15000);
@@ -151,7 +152,7 @@ QNetworkReply* HttpClient::get(const QString &endpoint)
     
     QNetworkRequest request(url);
     request.setRawHeader("Accept", "application/json");
-    request.setRawHeader("User-Agent", "Aifs/1.0 (Windows; Qt)");
+    request.setRawHeader("User-Agent", "HuanJing/1.0 (Windows; Qt)");
     request.setTransferTimeout(15000);   // §53.22-附：小 JSON API，15s 未完成=连接已死，快速失败
     
     // 非免认证接口附加 Token
@@ -196,7 +197,10 @@ void HttpClient::login(const QString &username, const QString &password, int pcL
     //   机会消耗掉直接报失败，新回调又触发重试，行为混乱）。只认最新一代，旧响应直接丢弃。
     const int gen = ++m_loginGeneration;
     
-    QNetworkReply *reply = post("/api/auth/login/control", body);
+    // ⭐ 2026-08-13 两步登录：改走 PC 专用接口 /api/auth/login/pc——
+    //   不带 deviceUsername 时后端【不】默认绑第一个设备，只返回 bindingList，
+    //   由登录页展示绑定 iOS 列表、选中后带设备再登一次。
+    QNetworkReply *reply = post("/api/auth/login/pc", body);
     
     connect(reply, &QNetworkReply::finished, this, [this, reply, gen, username, password, pcLevel, deviceUsername, fallbackOnUnboundDevice]() {
         reply->deleteLater();
@@ -439,7 +443,8 @@ void HttpClient::fetchOtgClientDownloadUrl()
 // ⭐ 生成/获取PC设备唯一标识（基于Windows MachineGuid + MAC地址）
 QString HttpClient::generatePcDeviceId()
 {
-    QSettings appSettings("Phoenix", "Phoenix");
+    // ⭐ 2026-08-14 aihj 品牌：设备ID缓存挪到幻境自己的注册表域，避免与主线(Phoenix)同机互串
+    QSettings appSettings("Acard", "HuanJing");
     QString cachedId = appSettings.value("pcDeviceId").toString();
     if (!cachedId.isEmpty()) {
         qDebug() << "[PcDeviceId] 使用缓存:" << cachedId;
@@ -716,7 +721,7 @@ void HttpClient::saveAccount(const QString &username, const QString &password,
 {
     if (username.isEmpty()) return;
     
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     
     // 获取现有账号列表
     QStringList accounts = settings.value("accounts", QStringList()).toStringList();
@@ -757,13 +762,13 @@ void HttpClient::saveAccount(const QString &username, const QString &password,
 
 QStringList HttpClient::getSavedAccounts() const
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     return settings.value("accounts", QStringList()).toStringList();
 }
 
 QString HttpClient::getAccountPassword(const QString &username) const
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     settings.beginGroup(QString("account/%1").arg(username));
     QString password = settings.value("password", "").toString();
     settings.endGroup();
@@ -778,7 +783,7 @@ QString HttpClient::getAccountPassword(const QString &username) const
 // ⭐ 2026-08-01：清除某账号本地记住的设备（iOS 改密解绑后旧设备记忆失效，登录 1004 自动回退时调用）
 void HttpClient::clearAccountDevice(const QString &username)
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     settings.beginGroup(QString("account/%1").arg(username));
     settings.setValue("deviceUsername", "");
     settings.setValue("deviceDisplay", "");
@@ -790,7 +795,7 @@ void HttpClient::clearAccountDevice(const QString &username)
 void HttpClient::updateAccountDevice(const QString &username, const QString &deviceUsername, const QString &deviceDisplay)
 {
     if (username.isEmpty()) return;
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     settings.beginGroup(QString("account/%1").arg(username));
     settings.setValue("deviceUsername", deviceUsername);
     settings.setValue("deviceDisplay", deviceDisplay);
@@ -800,7 +805,7 @@ void HttpClient::updateAccountDevice(const QString &username, const QString &dev
 
 QString HttpClient::getAccountDeviceUsername(const QString &username) const
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     settings.beginGroup(QString("account/%1").arg(username));
     QString deviceUsername = settings.value("deviceUsername", "").toString();
     settings.endGroup();
@@ -809,7 +814,7 @@ QString HttpClient::getAccountDeviceUsername(const QString &username) const
 
 QString HttpClient::getAccountDeviceDisplay(const QString &username) const
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     settings.beginGroup(QString("account/%1").arg(username));
     QString deviceDisplay = settings.value("deviceDisplay", "").toString();
     settings.endGroup();
@@ -818,7 +823,7 @@ QString HttpClient::getAccountDeviceDisplay(const QString &username) const
 
 QString HttpClient::getSavedUsername() const
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     // 优先返回最后登录的账号
     QString lastUsername = settings.value("lastUsername", "").toString();
     if (!lastUsername.isEmpty()) return lastUsername;
@@ -834,7 +839,7 @@ QString HttpClient::getSavedPassword() const
         return getAccountPassword(username);
     }
     // 兼容旧版本
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     return settings.value("password", "").toString();
 }
 
@@ -845,7 +850,7 @@ QString HttpClient::getSavedDeviceUsername() const
         return getAccountDeviceUsername(username);
     }
     // 兼容旧版本
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     return settings.value("deviceUsername", "").toString();
 }
 
@@ -856,7 +861,7 @@ QString HttpClient::getSavedDeviceDisplay() const
         return getAccountDeviceDisplay(username);
     }
     // 兼容旧版本
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     return settings.value("deviceDisplay", "").toString();
 }
 
@@ -875,7 +880,7 @@ void HttpClient::logout()
 
 void HttpClient::clearSavedAccount()
 {
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     settings.clear();
     settings.sync();
     qDebug() << "[HttpClient] 已清除所有保存的账号";
@@ -885,7 +890,7 @@ void HttpClient::removeAccount(const QString &username)
 {
     if (username.isEmpty()) return;
     
-    QSettings settings("Aifs", "Login");
+    QSettings settings("HuanJing", "Login");
     
     // 从列表中删除
     QStringList accounts = settings.value("accounts", QStringList()).toStringList();

@@ -12,7 +12,7 @@ ShortcutStore* ShortcutStore::instance()
 
 ShortcutStore::ShortcutStore(QObject *parent)
     : QObject(parent)
-    , m_settings(new QSettings("Acard", "Aifs_Shortcuts", this))
+    , m_settings(new QSettings("Acard", "HuanJing_Shortcuts", this))
 {
 }
 

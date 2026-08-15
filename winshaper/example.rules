@@ -1,3 +1,0 @@
-# exe_name  upload_Bps  download_Bps  (bytes per second; 0 = unlimited)
-# chrome.exe  100 KiB/s up, 200 KiB/s down
-chrome.exe 102400 204800
