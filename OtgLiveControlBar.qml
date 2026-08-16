@@ -20,6 +20,7 @@ RowLayout {
     property string mirrorMode: "none"
     property real   localZoom: 1.0
     property int    videoRotation: 0
+    property string deviceStatus: ""
 
     // ===== 设备侧下发（一律 otg_ 前缀，与自带摄像头通道分家）=====
     signal sendOtg(string ptype, var payload)
@@ -163,12 +164,25 @@ RowLayout {
     }
 
     LiveBarButton {
-        label: "睡眠"
-        onClicked: bar.sleepRequested()
-    }
+        id: sleepWorkBtn
+        label: (bar.deviceStatus === "sleeping" ? "睡眠" : "工作") + " ▼"
+        onClicked: sleepWorkMenu.toggle()
 
-    LiveBarButton {
-        label: "工作"
-        onClicked: bar.workRequested()
+        LiveBarMenu {
+            id: sleepWorkMenu
+            anchors.bottom: parent.top
+            anchors.bottomMargin: 4
+            anchors.horizontalCenter: parent.horizontalCenter
+            itemWidth: 64
+            options: [
+                { label: "工作", value: "work" },
+                { label: "睡眠", value: "sleep" }
+            ]
+            currentValue: bar.deviceStatus === "sleeping" ? "sleep" : "work"
+            onPicked: function(v) {
+                if (v === "sleep") bar.sleepRequested()
+                else bar.workRequested()
+            }
+        }
     }
 }

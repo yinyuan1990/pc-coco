@@ -1062,17 +1062,9 @@ Rectangle {
                             border.width: 1
                         }
                         
-                        // ⭐ 抓拍全屏菜单项（2026-08-14 需求：老 java gstream 没有 → 不显示，代码保留）
-                        Repeater {
-                            model: 0
-                            delegate: DarkMenuItem {
-                                text: "抓拍全屏 (" + ShortcutStore.gridFullscreenKey + ")"
-                                onTriggered: toggleGridFullscreen()
-                                
-                                Component.onCompleted: {
-                                    console.log("[抓拍全屏] Repeater 创建菜单项，pcActivationLevel:", mainPage.pcActivationLevel)
-                                }
-                            }
+                        DarkMenuItem {
+                            text: (mainPage.gridFullscreenMode ? "半屏" : "全屏") + " (" + ShortcutStore.gridFullscreenKey + ")"
+                            onTriggered: toggleGridFullscreen()
                         }
                         
                         DarkMenuItem {
@@ -1295,13 +1287,14 @@ Rectangle {
                     }
                 }
 
-                // 全屏模式开关（⭐ 2026-08-14 还原：对齐 java gstream 的「全屏（关/开）」按钮，qp 图标。
-                //   对应 A 键抓拍放大的显示方式：开=全屏显示，关=只覆盖截图框区域（halfScreenViewMode 取反））
+                // ⭐ 2026-08-16：半屏/全屏下拉。全屏=截图区铺满整个主界面（隐藏实时流/慢放），
+                //   半屏=恢复左右分栏。对齐老 java「全屏(F)」把截图这一块铺满。
                 Rectangle {
+                    id: gridViewModeBtn
                     width: fsModeBtnRow.width + 24
                     height: 32
                     radius: 8
-                    color: fsModeBtnArea.containsMouse ? "#3A3A3A" : "#292929"
+                    color: fsModeBtnArea.containsMouse || gridViewModeMenu.visible ? "#3A3A3A" : "#292929"
                     anchors.verticalCenter: parent.verticalCenter
                     
                     Row {
@@ -1316,11 +1309,17 @@ Rectangle {
                             smooth: true
                         }
                         Text {
-                            text: appSettings.halfScreenViewMode ? "全屏（关）" : "全屏（开）"
+                            text: mainPage.gridFullscreenMode ? "全屏" : "半屏"
                             font.family: "PingFang HK"
                             font.pixelSize: 14
                             color: "#FAFAFA"
                             anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Image {
+                            source: "images/down.png"
+                            width: 8; height: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
                         }
                     }
                     
@@ -1329,14 +1328,32 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            appSettings.halfScreenViewMode = !appSettings.halfScreenViewMode
-                            console.log("📺 放大查看模式:", appSettings.halfScreenViewMode ? "半屏(截图框)" : "全屏")
+                        onClicked: gridViewModeMenu.visible = !gridViewModeMenu.visible
+                    }
+
+                    Menu {
+                        id: gridViewModeMenu
+                        y: gridViewModeBtn.height + 4
+                        width: 90
+                        background: Rectangle {
+                            implicitWidth: 90
+                            color: "#292929"
+                            radius: 8
+                            border.color: "#3A3A3A"
+                            border.width: 1
                         }
-                        
-                        ToolTip.visible: containsMouse
-                        ToolTip.text: "抓拍放大显示方式：开=全屏显示，关=只覆盖截图框区域"
-                        ToolTip.delay: 300
+                        DarkMenuItem {
+                            text: "半屏"
+                            onTriggered: {
+                                if (mainPage.gridFullscreenMode) toggleGridFullscreen()
+                            }
+                        }
+                        DarkMenuItem {
+                            text: "全屏"
+                            onTriggered: {
+                                if (!mainPage.gridFullscreenMode) toggleGridFullscreen()
+                            }
+                        }
                     }
                 }
                 
@@ -2834,16 +2851,7 @@ Rectangle {
                                     toggleColumnPreview(displayCol + 1)  // 1-based
                                     return
                                 }
-                                // ⭐ Ctrl+点击：广播给所有 grid item 同步切帧
-                                if (mouse.modifiers & Qt.ControlModifier && gridCell.hasData) {
-                                    if (mouse.button === Qt.LeftButton) {
-                                        mainPage.gridSyncFrameStep("prev")
-                                    } else if (mouse.button === Qt.RightButton) {
-                                        mainPage.gridSyncFrameStep("next")
-                                    }
-                                    return
-                                }
-                                // ⭐ 左键=上一帧，右键=下一帧（单 item, 受 frameStep 影响）
+                                // ⭐ 2026-08-16：去掉 Ctrl 按住截图同步。左键=上一帧，右键=下一帧（单 item）
                                 if (gridCell.hasData && gridCell.totalFrames > 0) {
                                     if (mouse.button === Qt.LeftButton) {
                                         mainPage.stepCaptureFrame(gridCell.dataIndex, "prev")
@@ -2860,18 +2868,6 @@ Rectangle {
                                 // ⭐ 确保焦点和选中（防止首次滚轮时 S 键不生效）
                                 ensureFocusAndSelect()
                                 if (!gridCell.hasData || gridCell.totalFrames <= 0) return
-
-                                // ⭐ Ctrl 按住: 全 grid 联动 (滚轮切帧 / S+滚轮缩放)
-                                if (wheel.modifiers & Qt.ControlModifier) {
-                                    if (mainPage.sKeyPressed) {
-                                        // Ctrl + S + 滚轮: 全部 item 同步缩放 (各自以容器中心)
-                                        mainPage.gridSyncZoomDelta(wheel.angleDelta.y > 0 ? 0.2 : -0.2)
-                                    } else {
-                                        // Ctrl + 滚轮: 全部 item 同步切帧
-                                        mainPage.gridSyncFrameStep(wheel.angleDelta.y > 0 ? "prev" : "next")
-                                    }
-                                    return
-                                }
 
                                 // 🔍 调试日志：显示当前状态
                                 captureManager.zoomLog("🎡 wheel: dataIndex=" + gridCell.dataIndex + " itemZoom=" + gridCell.itemZoom.toFixed(2) + " offsetX=" + gridCell.itemOffsetX.toFixed(1) + " offsetY=" + gridCell.itemOffsetY.toFixed(1) + " frame=" + gridCell.currentFrame + " sKey=" + mainPage.sKeyPressed)
@@ -3110,25 +3106,17 @@ Rectangle {
                                 }
                                 onPressed: function(mouse) {
                                     if (gridCell.totalFrames <= 1) return
-                                    ctrlDrag = !!(mouse.modifiers & Qt.ControlModifier)
-                                    if (ctrlDrag) {
-                                        gridFrameBar.ctrlLastTarget = gridCell.currentFrame
-                                    } else {
-                                        var ratio0 = mouse.x / gridFrameBar.width
-                                        mainPage.jumpCaptureFrame(gridCell.dataIndex, gridFrameBar.ratioToFrame(ratio0))
-                                        gridCell.currentFrame = captureManager.getCurrentOffset(gridCell.dataIndex)
-                                    }
+                                    ctrlDrag = false
+                                    var ratio0 = mouse.x / gridFrameBar.width
+                                    mainPage.jumpCaptureFrame(gridCell.dataIndex, gridFrameBar.ratioToFrame(ratio0))
+                                    gridCell.currentFrame = captureManager.getCurrentOffset(gridCell.dataIndex)
                                 }
                                 onPositionChanged: {
                                     if (!drag.active || gridCell.totalFrames <= 1) return
                                     var ratio = gridFrameHandle.x / (gridFrameBar.width - 18)
                                     var frame = gridFrameBar.ratioToFrame(ratio)
-                                    if (ctrlDrag) {
-                                        gridFrameBar.applyCtrlBroadcast(frame)
-                                    } else {
-                                        mainPage.jumpCaptureFrame(gridCell.dataIndex, frame)
-                                        gridCell.currentFrame = captureManager.getCurrentOffset(gridCell.dataIndex)
-                                    }
+                                    mainPage.jumpCaptureFrame(gridCell.dataIndex, frame)
+                                    gridCell.currentFrame = captureManager.getCurrentOffset(gridCell.dataIndex)
                                 }
                             }
                         }
@@ -3921,73 +3909,102 @@ Rectangle {
                     }
                 }
                 
-                // 睡眠按钮
+                // ⭐ 2026-08-16：睡眠/工作合并为一个下拉
                 Rectangle {
-                    width: 50
+                    id: sleepWorkDropdown
+                    width: 62
                     height: 32
                     radius: 4
-                    color: sleepBtnLive.containsMouse ? "#C8E6C9" : "#80000000"
-                    
-                    Text {
+                    color: sleepWorkArea.containsMouse || sleepWorkMenu.visible ? "#C8E6C9" : "#80000000"
+
+                    Row {
                         anchors.centerIn: parent
-                        text: "睡眠"
-                        font.pixelSize: 12
-                        font.family: "PingFang HK"
-                        font.bold: true
-                        color: sleepBtnLive.containsMouse ? "#263238" : "#FFFFFF"
-                    }
-                    
-                    MouseArea {
-                        id: sleepBtnLive
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            console.log("📤 点击睡眠按钮")
-                            mainPage.deviceStatus = "sleeping"
-                            // ⭐ 主动停止拉流并重置状态，确保唤醒后能重新连接
-                            if (publishState === 1) {
-                                console.log("📤 睡眠：主动停止拉流，publishState 1 → 0")
-                                stopAll()
-                            }
-                            publishState = 0
-                            sendDeviceCommand("shuimian")
+                        spacing: 3
+                        Text {
+                            id: sleepWorkBtnText
+                            text: mainPage.deviceStatus === "sleeping" ? "睡眠" : "工作"
+                            font.pixelSize: 12
+                            font.family: "PingFang HK"
+                            font.bold: true
+                            color: sleepWorkArea.containsMouse || sleepWorkMenu.visible ? "#263238" : "#FFFFFF"
+                        }
+                        Text {
+                            text: "▼"
+                            font.pixelSize: 8
+                            color: sleepWorkBtnText.color
+                            anchors.verticalCenter: parent.verticalCenter
                         }
                     }
-                }
-                
-                // 工作按钮
-                Rectangle {
-                    width: 50
-                    height: 32
-                    radius: 4
-                    color: workBtnLive.containsMouse ? "#C8E6C9" : "#80000000"
-                    
-                    Text {
-                        anchors.centerIn: parent
-                        text: "工作"
-                        font.pixelSize: 12
-                        font.family: "PingFang HK"
-                        font.bold: true
-                        color: workBtnLive.containsMouse ? "#263238" : "#FFFFFF"
-                    }
-                    
+
                     MouseArea {
-                        id: workBtnLive
+                        id: sleepWorkArea
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            console.log("📤 点击工作按钮")
-                            mainPage.deviceStatus = "waking"
-                            // ⭐ 主动停止旧连接并重置状态，确保收到 CONFIG_STATE(publishStatus=1) 时能触发 playWebRTC()
-                            if (publishState === 1) {
-                                console.log("📤 工作：主动停止旧拉流，publishState 1 → 0")
-                                stopAll()
+                        onClicked: sleepWorkMenu.visible = !sleepWorkMenu.visible
+                    }
+
+                    Rectangle {
+                        id: sleepWorkMenu
+                        visible: false
+                        width: 60
+                        height: sleepWorkCol.height + 8
+                        anchors.bottom: parent.top
+                        anchors.bottomMargin: 4
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        color: "#E8F5E9"
+                        radius: 4
+                        border.color: "#A5D6A7"
+                        border.width: 1
+
+                        Column {
+                            id: sleepWorkCol
+                            anchors.centerIn: parent
+                            spacing: 2
+
+                            Repeater {
+                                model: [
+                                    { label: "工作", cmd: "gongzuo" },
+                                    { label: "睡眠", cmd: "shuimian" }
+                                ]
+                                Rectangle {
+                                    width: sleepWorkMenu.width - 8
+                                    height: 28
+                                    radius: 3
+                                    color: swItemArea.containsMouse ? "#C8E6C9" : "transparent"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData.label
+                                        font.pixelSize: 12
+                                        font.family: "PingFang HK"
+                                        font.bold: true
+                                        color: "#263238"
+                                    }
+                                    MouseArea {
+                                        id: swItemArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            sleepWorkMenu.visible = false
+                                            if (modelData.cmd === "shuimian") {
+                                                console.log("📤 下拉选择睡眠")
+                                                mainPage.deviceStatus = "sleeping"
+                                                if (publishState === 1) stopAll()
+                                                publishState = 0
+                                                sendDeviceCommand("shuimian")
+                                            } else {
+                                                console.log("📤 下拉选择工作")
+                                                mainPage.deviceStatus = "waking"
+                                                if (publishState === 1) stopAll()
+                                                publishState = 0
+                                                isConnecting = false
+                                                sendDeviceCommand("gongzuo")
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            publishState = 0
-                            isConnecting = false
-                            sendDeviceCommand("gongzuo")
                         }
                     }
                 }
@@ -4009,6 +4026,7 @@ Rectangle {
                 mirrorMode: mainPage.videoMirrorMode
                 localZoom: mainPage.videoZoom
                 videoRotation: mainPage.videoRotation
+                deviceStatus: mainPage.deviceStatus
 
                 onSendOtg: function(ptype, payload) {
                     console.log("🔗 [OTG链路|PC下发] " + ptype + " " + JSON.stringify(payload))
@@ -7740,7 +7758,7 @@ Rectangle {
                 ShortcutItem { key: "Space"; desc: "抓拍" }
                 ShortcutItem { key: "左键"; desc: "上一帧(实时流=抓拍)" }
                 ShortcutItem { key: "右键"; desc: "下一帧" }
-                ShortcutItem { key: "F"; desc: "全屏切换" }
+                ShortcutItem { key: "F"; desc: "半屏/全屏(截图铺满)" }
                 ShortcutItem { key: "G"; desc: "实时窗口切换" }
                 ShortcutItem { key: "H"; desc: "慢放窗口切换" }
                 ShortcutItem { key: "W"; desc: "开启/停止慢放" }
@@ -10871,12 +10889,7 @@ Rectangle {
                             if (fullscreenFrameSliderContainer.totalFrames <= 1) return
                             var ratio = mouse.x / fullscreenFrameSliderContainer.width
                             var frame = fullscreenFrameSliderContainer.ratioToFrame(ratio)
-                            if (mouse.modifiers & Qt.ControlModifier) {
-                                fullscreenFrameSliderContainer.ctrlLastTarget = fullscreenFrameIndex
-                                fullscreenFrameSliderContainer.applyCtrlBroadcast(frame)
-                            } else {
-                                fullscreenGoToFrame(frame)
-                            }
+                            fullscreenGoToFrame(frame)
                         }
                     }
 
@@ -10916,18 +10929,13 @@ Rectangle {
                                 else fullscreenGoToFrame(fullscreenFrameIndex + 1)
                             }
                             onPressed: function(mouse) {
-                                ctrlDrag = !!(mouse.modifiers & Qt.ControlModifier)
-                                if (ctrlDrag) fullscreenFrameSliderContainer.ctrlLastTarget = fullscreenFrameIndex
+                                ctrlDrag = false
                             }
                             onPositionChanged: {
                                 if (!drag.active || fullscreenFrameSliderContainer.totalFrames <= 1) return
                                 var ratio = fullscreenFrameHandle.x / (fullscreenFrameSliderContainer.width - 32)
                                 var frame = fullscreenFrameSliderContainer.ratioToFrame(ratio)
-                                if (ctrlDrag) {
-                                    fullscreenFrameSliderContainer.applyCtrlBroadcast(frame)
-                                } else {
-                                    fullscreenGoToFrame(frame)
-                                }
+                                fullscreenGoToFrame(frame)
                             }
                         }
                     }
@@ -11150,12 +11158,6 @@ Rectangle {
                             onClicked: function(mouse) {
                                 // ⭐ 刚拖动过 → 不触发切帧
                                 if (panMoved) { panMoved = false; return }
-                                // ⭐ Ctrl+点击：本列所有 item 同步上/下一帧
-                                if (mouse.modifiers & Qt.ControlModifier) {
-                                    if (mouse.button === Qt.LeftButton) columnPreviewPrevFrame()
-                                    else if (mouse.button === Qt.RightButton) columnPreviewNextFrame()
-                                    return
-                                }
                                 // ⭐ 左键=上一帧，右键=下一帧（单张, 受 frameStep 影响）
                                 var idx = colPreviewItem.myIndex
                                 var step = mainPage.frameStep
@@ -11174,17 +11176,6 @@ Rectangle {
                             onWheel: function(wheel) {
                                 wheel.accepted = true
                                 var idx = colPreviewItem.myIndex
-
-                                // ⭐ Ctrl+滚轮：本列所有 item 同步切帧 / 同步缩放
-                                if (wheel.modifiers & Qt.ControlModifier) {
-                                    if (mainPage.sKeyPressed) {
-                                        columnPreviewSyncZoomDelta(wheel.angleDelta.y > 0 ? 0.2 : -0.2)
-                                    } else {
-                                        if (wheel.angleDelta.y > 0) columnPreviewPrevFrame()
-                                        else columnPreviewNextFrame()
-                                    }
-                                    return
-                                }
 
                                 if (mainPage.sKeyPressed) {
                                     // S + 滚轮：以鼠标为中心缩放（单张）→ 直接落 itemZoomMap（唯一数据源）
@@ -11345,23 +11336,15 @@ Rectangle {
                             }
                             onPressed: function(mouse) {
                                 if (colPreviewItem.totalFrames <= 1) return
-                                ctrlDrag = !!(mouse.modifiers & Qt.ControlModifier)
-                                if (ctrlDrag) {
-                                    colPreviewFrameBar.ctrlLastTarget = colPreviewItem.frameIdx
-                                } else {
-                                    var ratio0 = mouse.x / colPreviewFrameBar.width
-                                    columnPreviewJumpSingleFrame(colPreviewItem.myIndex, colPreviewFrameBar.ratioToFrame(ratio0))
-                                }
+                                ctrlDrag = false
+                                var ratio0 = mouse.x / colPreviewFrameBar.width
+                                columnPreviewJumpSingleFrame(colPreviewItem.myIndex, colPreviewFrameBar.ratioToFrame(ratio0))
                             }
                             onPositionChanged: {
                                 if (!drag.active || colPreviewItem.totalFrames <= 1) return
                                 var ratio = colPreviewFrameHandle.x / (colPreviewFrameBar.width - 18)
                                 var frame = colPreviewFrameBar.ratioToFrame(ratio)
-                                if (ctrlDrag) {
-                                    colPreviewFrameBar.applyCtrlBroadcast(frame)
-                                } else {
-                                    columnPreviewJumpSingleFrame(colPreviewItem.myIndex, frame)
-                                }
+                                columnPreviewJumpSingleFrame(colPreviewItem.myIndex, frame)
                             }
                         }
                     }
@@ -11671,12 +11654,7 @@ Rectangle {
                             if (zoomFrameSliderContainer.totalFrames <= 1) return
                             var ratio = mouse.x / zoomFrameSliderContainer.width
                             var frame = zoomFrameSliderContainer.ratioToFrame(ratio)
-                            if (mouse.modifiers & Qt.ControlModifier) {
-                                zoomFrameSliderContainer.ctrlLastTarget = columnPreviewZoomFrame
-                                zoomFrameSliderContainer.applyCtrlBroadcast(frame)
-                            } else {
-                                columnPreviewZoomGoToFrame(frame)
-                            }
+                            columnPreviewZoomGoToFrame(frame)
                         }
                     }
 
@@ -11715,18 +11693,13 @@ Rectangle {
                                 else columnPreviewZoomGoToFrame(columnPreviewZoomFrame + 1)
                             }
                             onPressed: function(mouse) {
-                                ctrlDrag = !!(mouse.modifiers & Qt.ControlModifier)
-                                if (ctrlDrag) zoomFrameSliderContainer.ctrlLastTarget = columnPreviewZoomFrame
+                                ctrlDrag = false
                             }
                             onPositionChanged: {
                                 if (!drag.active || zoomFrameSliderContainer.totalFrames <= 1) return
                                 var ratio = zoomFrameHandle.x / (zoomFrameSliderContainer.width - 32)
                                 var frame = zoomFrameSliderContainer.ratioToFrame(ratio)
-                                if (ctrlDrag) {
-                                    zoomFrameSliderContainer.applyCtrlBroadcast(frame)
-                                } else {
-                                    columnPreviewZoomGoToFrame(frame)
-                                }
+                                columnPreviewZoomGoToFrame(frame)
                             }
                         }
                     }
@@ -11737,10 +11710,9 @@ Rectangle {
     
     // ============ 快捷键处理（使用 Shortcut 组件更可靠）============
     
-    // Grid全屏快捷键（2026-08-14 需求：老 java gstream 没有抓拍全屏 → 不触发，代码保留）
+    // Grid全屏快捷键（F）：截图区铺满 / 恢复半屏
     Shortcut {
         sequence: ShortcutStore.gridFullscreenKey
-        enabled: false
         onActivated: toggleGridFullscreen()
     }
     
@@ -11760,14 +11732,8 @@ Rectangle {
     
     // ============ 窗口切换函数 ============
     
-    // Grid全屏切换：左侧占满宽度，右侧隐藏
+    // Grid全屏切换：左侧截图区占满宽度，右侧实时流/慢放隐藏
     function toggleGridFullscreen() {
-        // ⭐ PC等级1(豪华版)：不允许手动打开抓拍全屏
-        if (mainPage.pcActivationLevel < 2) {
-            console.log("[抓拍全屏] PC等级1不允许手动打开抓拍全屏")
-            return
-        }
-        
         // ⭐ 变化前的状态（在进入全屏前立即获取，确保是最新的）
         var beforeTop = rightTopHolder.height
         var beforeMiddle = rightMiddleHolder.height
