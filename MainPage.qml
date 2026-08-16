@@ -9730,21 +9730,16 @@ Rectangle {
     Popup {
         id: scanBindPopup
         parent: Overlay.overlay
+        // ⭐ 2026-08-16 修位置：入口已从顶部菜单移到切换账号弹框内，不能再按已隐藏的
+        //   deviceBindText 按钮定位（会跑到错误位置）。对齐登录页扫码绑定弹窗：屏幕居中。
+        anchors.centerIn: parent
         width: 320
         height: 344
-        modal: false
+        modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 0
         
         property string qrCodeContent: ""
-        
-        // 动态计算位置
-        onAboutToShow: {
-            var pos = deviceBindText.mapToGlobal(0, deviceBindText.height + 8)
-            var windowPos = mainWindow.contentItem.mapFromGlobal(pos.x, pos.y)
-            scanBindPopup.x = windowPos.x - scanBindPopup.width / 2 + deviceBindText.width / 2
-            scanBindPopup.y = windowPos.y
-        }
         
         background: Rectangle {
             color: "#2b2b2b"
