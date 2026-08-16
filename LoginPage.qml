@@ -626,20 +626,43 @@ Rectangle {
         // 由 onLoginSuccess 用登录响应的 bindingList 填充
         property var deviceList: []
 
+        // ⭐ 2026-08-16 对齐切换账号弹框：item 支持 备注/解绑，需带上 bindingId 和原始字段
         function populate(bindingList) {
             var arr = []
             for (var i = 0; i < bindingList.length; i++) {
                 var b = bindingList[i]
-                var name = b.deviceNickname || b.deviceUsername || ""
-                var remark = b.remark || ""
-                var display = remark.length > 0 ? (name + " (" + remark + ")") : name
                 arr.push({
                     devUser: b.deviceUsername || "",
-                    display: display,
+                    name: b.deviceNickname || b.deviceUsername || "",
+                    remark: b.remark || "",
+                    bindingId: (b.bindingId !== undefined && b.bindingId !== null) ? b.bindingId : null,
                     online: b.online === true
                 })
             }
             deviceList = arr
+        }
+
+        // 备注修改后就地更新列表项
+        function updateRemark(devUser, remark) {
+            var arr = deviceList.slice()
+            for (var i = 0; i < arr.length; i++) {
+                if (arr[i].devUser === devUser) {
+                    arr[i].remark = remark || ""
+                    break
+                }
+            }
+            deviceList = arr
+        }
+
+        // 解绑成功后移除列表项；列表空了则不带设备再登录一次直接进主页
+        function removeByBindingId(bindingId) {
+            var arr = deviceList.filter(function(d) { return d.bindingId !== bindingId })
+            deviceList = arr
+            if (arr.length === 0 && !loginPage.isLoggingIn) {
+                loginPage.isLoggingIn = true
+                loginError = ""
+                HttpClient.login(loginUsername.text.trim(), loginPassword.text.trim(), 1, "", false)
+            }
         }
 
         ColumnLayout {
@@ -708,7 +731,9 @@ Rectangle {
 
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.display
+                            text: modelData.remark && modelData.remark.length > 0
+                                  ? modelData.name + " (" + modelData.remark + ")"
+                                  : modelData.name
                             font.family: "PingFang HK"
                             font.pixelSize: 15
                             color: "#E0E0E0"
@@ -723,15 +748,6 @@ Rectangle {
                         }
                     }
 
-                    Text {
-                        anchors.right: parent.right
-                        anchors.rightMargin: 16
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "\u203A"
-                        font.pixelSize: 20
-                        color: deviceItemArea.containsMouse ? "#607AFB" : "#808080"
-                    }
-
                     MouseArea {
                         id: deviceItemArea
                         anchors.fill: parent
@@ -739,6 +755,81 @@ Rectangle {
                         cursorShape: Qt.PointingHandCursor
                         enabled: !loginPage.isLoggingIn
                         onClicked: loginWithDevice(modelData.devUser)
+                    }
+
+                    // ⭐ 2026-08-16 对齐切换账号弹框的三个操作：整行点击=选中登录，
+                    //   右侧加 备注 / 解绑（声明在整行 MouseArea 之后，保证点得到）
+                    Row {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 8
+
+                        Rectangle {
+                            width: 40
+                            height: 24
+                            radius: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: selRemarkArea.containsMouse ? "#4a4a4a" : "#3a3a3a"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "备注"
+                                font.pixelSize: 11
+                                color: selRemarkArea.containsMouse ? "#FFFFFF" : "#94a3b8"
+                            }
+
+                            MouseArea {
+                                id: selRemarkArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    selectRemarkDialog.devUser = modelData.devUser
+                                    selectRemarkDialog.deviceName = modelData.name
+                                    selectRemarkInput.text = modelData.remark || ""
+                                    selectRemarkDialog.open()
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: 40
+                            height: 24
+                            radius: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: selUnbindArea.containsMouse ? "#4a4a4a" : "#3a3a3a"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "解绑"
+                                font.pixelSize: 11
+                                color: selUnbindArea.containsMouse ? "#FFFFFF" : "#94a3b8"
+                            }
+
+                            MouseArea {
+                                id: selUnbindArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (modelData.bindingId === null || modelData.bindingId === undefined) {
+                                        showToast("无法获取绑定信息，请返回重新登录", false)
+                                        return
+                                    }
+                                    selectUnbindDialog.bindingId = modelData.bindingId
+                                    selectUnbindDialog.deviceName = modelData.name
+                                    selectUnbindDialog.open()
+                                }
+                            }
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "\u203A"
+                            font.pixelSize: 20
+                            color: deviceItemArea.containsMouse ? "#607AFB" : "#808080"
+                        }
                     }
                 }
 
@@ -792,6 +883,229 @@ Rectangle {
             }
         }
     }
+    // ============ 选择设备页：备注弹框（对齐切换账号弹框功能）============
+    Dialog {
+        id: selectRemarkDialog
+        anchors.centerIn: parent
+        width: 320
+        height: 210
+        modal: true
+
+        property string devUser: ""
+        property string deviceName: ""
+
+        background: Rectangle {
+            color: "#1F1F1F"
+            radius: 12
+            border.color: "#3A3A3A"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 14
+            padding: 20
+
+            Text {
+                text: "设备备注 · " + selectRemarkDialog.deviceName
+                font.family: "PingFang HK"
+                font.pixelSize: 15
+                font.bold: true
+                color: "#FAFAFA"
+            }
+
+            Rectangle {
+                width: parent.width - 40
+                height: 40
+                radius: 8
+                color: "#292929"
+                border.color: selectRemarkInput.activeFocus ? "#607AFB" : "#3a3a3a"
+                border.width: 1
+
+                TextField {
+                    id: selectRemarkInput
+                    anchors.fill: parent
+                    placeholderText: "请输入备注（留空则清除）"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 14
+                    color: "#E0E0E0"
+                    placeholderTextColor: "#808080"
+                    background: null
+                    leftPadding: 12
+                }
+            }
+
+            Row {
+                spacing: 12
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Rectangle {
+                    width: 100
+                    height: 36
+                    radius: 4
+                    color: selRemarkCancelArea.containsMouse ? "#3A3A3A" : "#2A2A2A"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "取消"
+                        font.pixelSize: 14
+                        color: "#CCCCCC"
+                    }
+
+                    MouseArea {
+                        id: selRemarkCancelArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: selectRemarkDialog.close()
+                    }
+                }
+
+                Rectangle {
+                    width: 100
+                    height: 36
+                    radius: 4
+                    color: selRemarkSaveArea.containsMouse ? "#4f6af0" : "#607AFB"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "保存"
+                        font.pixelSize: 14
+                        color: "#FFFFFF"
+                    }
+
+                    MouseArea {
+                        id: selRemarkSaveArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            var ctrl = HttpClient.loggedInUsername()
+                            if (!ctrl || ctrl.length === 0) ctrl = loginUsername.text.trim()
+                            HttpClient.setRemark(ctrl, selectRemarkDialog.devUser, selectRemarkInput.text.trim())
+                            selectRemarkDialog.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ============ 选择设备页：解绑确认弹框（对齐切换账号弹框功能）============
+    Dialog {
+        id: selectUnbindDialog
+        anchors.centerIn: parent
+        width: 340
+        height: 190
+        modal: true
+
+        property var bindingId: null
+        property string deviceName: ""
+
+        background: Rectangle {
+            color: "#1F1F1F"
+            radius: 12
+            border.color: "#3A3A3A"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 16
+            padding: 20
+
+            Text {
+                width: parent.width - 40
+                text: "确定要解绑设备「" + selectUnbindDialog.deviceName + "」吗？\n解绑后需要重新在iOS端扫码绑定。"
+                font.family: "PingFang HK"
+                font.pixelSize: 14
+                color: "#DDDDDD"
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                spacing: 12
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Rectangle {
+                    width: 100
+                    height: 36
+                    radius: 4
+                    color: selUnbindCancelArea.containsMouse ? "#3A3A3A" : "#2A2A2A"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "取消"
+                        font.pixelSize: 14
+                        color: "#CCCCCC"
+                    }
+
+                    MouseArea {
+                        id: selUnbindCancelArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: selectUnbindDialog.close()
+                    }
+                }
+
+                Rectangle {
+                    width: 100
+                    height: 36
+                    radius: 4
+                    color: selUnbindConfirmArea.containsMouse ? "#CC0000" : "#E53935"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "确认解绑"
+                        font.pixelSize: 14
+                        color: "#FFFFFF"
+                    }
+
+                    MouseArea {
+                        id: selUnbindConfirmArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            var pwd = loginPassword.text.trim()
+                            if (!pwd) {
+                                showToast("无法获取账号密码，请返回重新登录", false)
+                                selectUnbindDialog.close()
+                                return
+                            }
+                            HttpClient.windowsUnbind(selectUnbindDialog.bindingId, pwd)
+                            selectUnbindDialog.close()
+                            showToast("正在解绑...")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 选择设备页的备注/解绑结果处理（仅本页可见时响应，避免与主页面重复处理）
+    Connections {
+        target: HttpClient
+        enabled: currentView === "selectDevice"
+
+        function onSetRemarkSuccess(controlUsername, deviceUsername, remark) {
+            deviceSelectForm.updateRemark(deviceUsername, remark)
+            showToast("备注已保存")
+        }
+
+        function onSetRemarkFailed(code, message) {
+            showToast("备注保存失败: " + message)
+        }
+
+        function onUnbindSuccess(bindingId, message) {
+            showToast("解绑成功")
+            deviceSelectForm.removeByBindingId(bindingId)
+        }
+
+        function onUnbindFailed(code, message) {
+            showToast("解绑失败: " + message)
+        }
+    }
+
     // ============ 注册表单（流程不变，仅换肤）============
     Rectangle {
         id: registerForm
