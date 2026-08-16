@@ -52,6 +52,14 @@
   }
   #statsToggle:hover { background: rgba(0,0,0,0.7); }
   #statsToggle.on { background: rgba(33,150,243,0.85); color: #fff; border-color: transparent; }
+  /* ⭐ 2026-08-16：右上角「信息」按钮弃用（永久隐藏），改为鼠标悬停画面时
+     左上角显示当前分辨率角标（显隐仍由 QML 转发的 hover 状态控制）。 */
+  #resBadge {
+    position: absolute; left: 10px; top: 10px; z-index: 9999;
+    background: rgba(0,0,0,0.55); color: #E8F5E9; padding: 4px 10px;
+    border-radius: 4px; font-family: Consolas, monospace; font-size: 13px; font-weight: bold;
+    pointer-events: none; display: none;
+  }
   #errBox {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
     z-index: 99999; color: #ff5252; font-size: 15px; text-align: center;
@@ -62,6 +70,7 @@
 <body>
   <video id="remoteVideo" autoplay muted playsinline></video>
   <div id="statsToggle" title="显示/隐藏统计信息">信息</div>
+  <div id="resBadge"></div>
   <div id="badge">Chromium 内核</div>
   <div id="statsPanel">等待启动…</div>
   <div id="errBox"></div>
@@ -85,11 +94,25 @@
   //   hover 效果）会把鼠标移动(hover)事件拦在 WebEngineView 之上，页面收不到真实 mousemove；
   //   QML 端 livePanelHover 本来就能可靠拿到 hover 状态，直接转发过来最省事）。
   //   统计面板/徽标的展开与收起则是纯点击开关，与鼠标是否还在画面内无关（点开就一直显示，再点一次关掉）。
-  let statsToggleHover = false  // 鼠标是否在实时流画面内（决定「信息」按钮是否显示）
-  let statsOn = false           // 用户是否点开了统计面板（决定详细信息+徽标是否显示）
+  let statsToggleHover = false  // 鼠标是否在实时流画面内（现在决定左上角分辨率角标是否显示）
+  let statsOn = false           // 统计面板开关（入口按钮已弃用，逻辑保留无入口）
 
+  const resBadgeEl = document.getElementById('resBadge')
+
+  // ⭐ 2026-08-16：右上角「信息」按钮弃用（永久隐藏，代码保留）。
+  //   鼠标悬停画面 → 左上角只显示当前分辨率角标。
   function applyStatsToggleVisibility() {
-    if (toggleEl) toggleEl.style.display = statsToggleHover ? 'block' : 'none'
+    if (toggleEl) toggleEl.style.display = 'none'
+    if (resBadgeEl) {
+      if (statsToggleHover) {
+        var w = videoEl.videoWidth || 0
+        var h = videoEl.videoHeight || 0
+        resBadgeEl.textContent = (w > 0 && h > 0) ? (w + '×' + h) : '--'
+        resBadgeEl.style.display = 'block'
+      } else {
+        resBadgeEl.style.display = 'none'
+      }
+    }
   }
   function applyStatsPanelVisibility() {
     statsEl.style.display = statsOn ? 'block' : 'none'
@@ -99,17 +122,13 @@
   applyStatsToggleVisibility()
   applyStatsPanelVisibility()
 
+  // 悬停期间流分辨率变了（切档）→ 角标跟着刷新
+  videoEl.addEventListener('resize', applyStatsToggleVisibility)
+
   // QML → JS：livePanel.isHovering 变化时直接调用，true=鼠标在实时流面板内，false=移出
   window.setStatsHoverFromQml = function(visible) {
     statsToggleHover = !!visible
     applyStatsToggleVisibility()
-  }
-
-  if (toggleEl) {
-    toggleEl.addEventListener('click', function() {
-      statsOn = !statsOn
-      applyStatsPanelVisibility()
-    })
   }
 
   // ⭐ 本地画面变换（缩放/镜像/旋转），由 QML 在网页内核作主播放器时调用。
