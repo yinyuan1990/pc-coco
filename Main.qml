@@ -22,16 +22,35 @@ ApplicationWindow {
     signal windowSizeChanged(int newWidth, int newHeight)
     
     // 初始尺寸（登录/注册卡片大小）
-    //   ⭐ 2026-08-13：登录/注册窗口高度 650 → 700。
+    //   ⭐ 2026-08-16：登录/注册/选设备窗口高度各自独立自适应（见 loginStageHeight），
+    //   登录页原 700 高底部有大片空白，按内容实测高度收紧。
     width: 600
-    height: 700
+    height: loginViewHeight
     // ⭐ 2026-08-15 修「登录后登录页先被撑大」：最小尺寸不能绑 isLoggedIn——
     //   登录成功瞬间 isLoggedIn=true，但 MainPage 是异步加载（§24），窗口切换推迟到
-    //   mainPageLoader.onLoaded；绑定抢跑会让 600x700 的登录窗口立刻被最小尺寸
+    //   mainPageLoader.onLoaded；绑定抢跑会让登录窗口立刻被最小尺寸
     //   1280x720 强制撑大，登录卡片跟着拉大。最小尺寸改为进主页时 switchTimer
-    //   显式设 1280x720、退出登录时显式设回 600x700。
+    //   显式设 1280x720、退出登录时显式设回登录页尺寸。
     minimumWidth: 600
-    minimumHeight: 700
+    minimumHeight: loginViewHeight
+
+    // ⭐ 2026-08-16：登录前三个视图的窗口高度（按内容实测，注册页独立不共用登录的基座尺寸）
+    readonly property int loginViewHeight: 520
+    readonly property int registerViewHeight: 660
+    readonly property int selectDeviceViewHeight: 600
+
+    // 按 LoginPage 当前视图调整窗口高度（垂直居中不跳位）
+    function applyLoginStageHeight() {
+        if (isLoggedIn) return
+        var v = (loginLoader.item && loginLoader.item.currentView) ? loginLoader.item.currentView : "login"
+        var h = v === "register" ? registerViewHeight
+              : (v === "selectDevice" ? selectDeviceViewHeight : loginViewHeight)
+        if (mainWindow.height === h) return
+        var centerY = mainWindow.y + mainWindow.height / 2
+        mainWindow.minimumHeight = h
+        mainWindow.height = h
+        mainWindow.y = Math.max(0, Math.round(centerY - h / 2))
+    }
     flags: Qt.Window | Qt.FramelessWindowHint
     color: "transparent"
     
@@ -443,7 +462,13 @@ ApplicationWindow {
     // 处理退出登录
     function handleLogout() {
         console.log("Main.qml: 收到退出登录信号")
-        // 先隐藏窗口
+        // ⭐ 2026-08-16 修「退出登录回到登录页铺满屏幕」：最大化/全屏状态下直接改
+        //   width/height 不生效，visible=true 后窗口仍按最大化恢复 → 登录页铺满。
+        //   先退回普通窗口态（要在隐藏之前做，隐藏后再设 visibility 会把窗口提前显示出来）。
+        if (mainWindow.visibility === Window.Maximized || mainWindow.visibility === Window.FullScreen) {
+            mainWindow.visibility = Window.Windowed
+        }
+        // 再隐藏窗口
         mainWindow.visible = false
         logoutTimer.start()
     }
@@ -452,18 +477,19 @@ ApplicationWindow {
         id: logoutTimer
         interval: 50
         onTriggered: {
-            // 先切换状态（最小尺寸已不再绑 isLoggedIn，下面显式恢复 600x700）
+            // 先切换状态（最小尺寸已不再绑 isLoggedIn，下面显式恢复登录页尺寸）
             isLoggedIn = false
-            
-            // ⭐ 恢复登录页窗口尺寸（必须与首次启动初始值完全一致：600 x 700）。
+
+            // ⭐ 恢复登录页窗口尺寸（与启动初始值一致：600 x loginViewHeight）。
+            //   最大化/全屏 → 普通窗口态的切换已在 handleLogout 里提前做掉。
             mainWindow.minimumWidth = 600
-            mainWindow.minimumHeight = 700
+            mainWindow.minimumHeight = loginViewHeight
             mainWindow.maximumWidth = 600
-            mainWindow.maximumHeight = 700
+            mainWindow.maximumHeight = loginViewHeight
             mainWindow.width = 600
-            mainWindow.height = 700
+            mainWindow.height = loginViewHeight
             mainWindow.x = (Screen.width - 600) / 2
-            mainWindow.y = (Screen.height - 700) / 2
+            mainWindow.y = (Screen.height - loginViewHeight) / 2
             mainWindow.color = "transparent"
             
             // 延迟一帧后解除最大尺寸限制
@@ -587,6 +613,9 @@ ApplicationWindow {
             console.log("Main.qml: LoginPage 已加载")
             if (item) {
                 item.loginSuccess.connect(handleLoginSuccess)
+                // ⭐ 2026-08-16：登录/注册/选设备切换时窗口高度跟随视图自适应
+                item.currentViewChanged.connect(applyLoginStageHeight)
+                applyLoginStageHeight()
             }
         }
     }
