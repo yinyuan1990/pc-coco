@@ -1709,7 +1709,7 @@ Rectangle {
     // ============ 版本过低·需更新对话框 ============
     Rectangle {
         id: updateDialog
-        width: 420
+        width: 380  // ⭐ 2026-08-16：登录窗口收窄到 400，弹窗跟着收窄防溢出
         height: 220
         anchors.centerIn: parent
         color: "#2d2d2d"

@@ -1865,6 +1865,34 @@ Rectangle {
             // 中间弹性空间
             Item { Layout.fillWidth: true }
 
+            // ⭐ 2026-08-16 需求：滚轮帧数从底部状态栏右下角挪到顶部菜单栏排版
+            Rectangle {
+                width: wheelStepText.width + 16
+                height: 24
+                radius: 8
+                color: "#292929"
+                Layout.alignment: Qt.AlignVCenter
+
+                Text {
+                    id: wheelStepText
+                    anchors.centerIn: parent
+                    text: "滚轮帧数: " + mainPage.frameStep
+                    font.family: "PingFang HK"
+                    font.pixelSize: 12
+                    color: "#FAFAFA"
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    ToolTip.visible: containsMouse
+                    ToolTip.text: "滚轮切帧步长"
+                    ToolTip.delay: 300
+                }
+            }
+
+            Item { width: 12 }
+
             // 版本号（⭐ 2026-08-14：顶部不再显示，代码保留）
             Text {
                 visible: false
@@ -2238,34 +2266,7 @@ Rectangle {
             }
         }
 
-        // ⭐ 滚轮帧数（步长）显示：默认1，按 F5–F8 跟随 frameStep 变化
-        //   位置对齐 java gstream 的 scrollFrameLabel（底栏右侧）
-        Rectangle {
-            width: wheelStepText.width + 16
-            height: 24
-            radius: 8
-            color: "#1F1F1F"
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-
-            Text {
-                id: wheelStepText
-                anchors.centerIn: parent
-                text: "滚轮帧数: " + mainPage.frameStep
-                font.family: "PingFang HK"
-                font.pixelSize: 12
-                color: "#FAFAFA"
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                ToolTip.visible: containsMouse
-                ToolTip.text: "滚轮切帧步长"
-                ToolTip.delay: 300
-            }
-        }
+        // ⭐ 2026-08-16：滚轮帧数（步长）显示已挪到顶部菜单栏（见 topMenuBar 右侧）
     }
 
     // ============ 主布局 ============
@@ -3460,17 +3461,31 @@ Rectangle {
             // 底部控制栏（移到 livePanel 层级，不被覆盖层遮挡）
             // ⭐ 第五十章：这一排是「自带摄像头」版（固定5档/倍数变倍/前后置）。
             //   OTG 设备整排换成 OtgLiveControlBar（见下），这里不做逐按钮的 if-else。
+            // ⭐ 2026-08-16 需求：不再做「悬停才显示」的浮窗，常驻左下角；面板底色对齐
+            //   老 java SimpleWebRTCPlayerView.bottomLeftControls（rgba(255,255,255,0.18)
+            //   圆角10 + rgba(0,0,0,0.25) 边框，内边距 8/12），按钮排版不变。
+            Rectangle {
+                anchors.fill: liveControlBar
+                anchors.leftMargin: -12
+                anchors.rightMargin: -12
+                anchors.topMargin: -8
+                anchors.bottomMargin: -8
+                radius: 10
+                color: "#2EFFFFFF"
+                border.color: "#40000000"
+                border.width: 1
+                z: 99
+                visible: liveControlBar.visible
+            }
             Row {
                 id: liveControlBar
                 anchors.left: parent.left
-                anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                anchors.margins: 10
+                anchors.leftMargin: 22    // 10(原边距) + 12(面板横向内边距)
+                anchors.bottomMargin: 18  // 10(原边距) + 8(面板纵向内边距)
                 spacing: 8
                 z: 100  // 确保在覆盖层之上
-                visible: livePanel.isHovering && !CameraCapsStore.isOtg
-                opacity: livePanel.isHovering ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                visible: !CameraCapsStore.isOtg
                 // onVisibleChanged: console.log("🎮 liveControlBar visible:", visible)
                 
                 // 档位切换下拉列表
@@ -3981,15 +3996,28 @@ Rectangle {
             // ⭐ 第五十章：OTG 版底部按钮栏（独立文件 OtgLiveControlBar.qml）。
             //   设备侧的三个按钮（分辨率档位/推送帧率/码率/变焦）全走 otg_ 独立通道；
             //   右半边镜像/缩放/旋转/睡眠/工作与镜头无关，只发信号复用下面既有实现。
+            // ⭐ 2026-08-16 需求：同上，OTG 版底栏也去掉悬停浮窗，常驻 + 老 java 面板底色
+            Rectangle {
+                anchors.fill: otgControlBar
+                anchors.leftMargin: -12
+                anchors.rightMargin: -12
+                anchors.topMargin: -8
+                anchors.bottomMargin: -8
+                radius: 10
+                color: "#2EFFFFFF"
+                border.color: "#40000000"
+                border.width: 1
+                z: 99
+                visible: otgControlBar.visible
+            }
             OtgLiveControlBar {
+                id: otgControlBar
                 anchors.left: parent.left
-                anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                anchors.margins: 10
+                anchors.leftMargin: 22
+                anchors.bottomMargin: 18
                 z: 100
-                visible: livePanel.isHovering && CameraCapsStore.isOtg
-                opacity: visible ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                visible: CameraCapsStore.isOtg
 
                 mirrorMode: mainPage.videoMirrorMode
                 localZoom: mainPage.videoZoom

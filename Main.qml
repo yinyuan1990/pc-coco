@@ -24,14 +24,15 @@ ApplicationWindow {
     // 初始尺寸（登录/注册卡片大小）
     //   ⭐ 2026-08-16：登录/注册/选设备窗口高度各自独立自适应（见 loginStageHeight），
     //   登录页原 700 高底部有大片空白，按内容实测高度收紧。
-    width: 600
+    // ⭐ 2026-08-16 需求：登录窗口宽度砍 1/3（600→400），上下窄长像 QQ 登录
+    width: 400
     height: loginViewHeight
     // ⭐ 2026-08-15 修「登录后登录页先被撑大」：最小尺寸不能绑 isLoggedIn——
     //   登录成功瞬间 isLoggedIn=true，但 MainPage 是异步加载（§24），窗口切换推迟到
     //   mainPageLoader.onLoaded；绑定抢跑会让登录窗口立刻被最小尺寸
     //   1280x720 强制撑大，登录卡片跟着拉大。最小尺寸改为进主页时 switchTimer
     //   显式设 1280x720、退出登录时显式设回登录页尺寸。
-    minimumWidth: 600
+    minimumWidth: 400
     minimumHeight: loginViewHeight
 
     // ⭐ 2026-08-16：登录前三个视图的窗口高度（按内容实测，注册页独立不共用登录的基座尺寸）
@@ -480,15 +481,15 @@ ApplicationWindow {
             // 先切换状态（最小尺寸已不再绑 isLoggedIn，下面显式恢复登录页尺寸）
             isLoggedIn = false
 
-            // ⭐ 恢复登录页窗口尺寸（与启动初始值一致：600 x loginViewHeight）。
+            // ⭐ 恢复登录页窗口尺寸（与启动初始值一致：400 x loginViewHeight）。
             //   最大化/全屏 → 普通窗口态的切换已在 handleLogout 里提前做掉。
-            mainWindow.minimumWidth = 600
+            mainWindow.minimumWidth = 400
             mainWindow.minimumHeight = loginViewHeight
-            mainWindow.maximumWidth = 600
+            mainWindow.maximumWidth = 400
             mainWindow.maximumHeight = loginViewHeight
-            mainWindow.width = 600
+            mainWindow.width = 400
             mainWindow.height = loginViewHeight
-            mainWindow.x = (Screen.width - 600) / 2
+            mainWindow.x = (Screen.width - 400) / 2
             mainWindow.y = (Screen.height - loginViewHeight) / 2
             mainWindow.color = "transparent"
             
