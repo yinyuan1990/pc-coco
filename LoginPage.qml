@@ -628,6 +628,7 @@ Rectangle {
 
         // ⭐ 2026-08-16 对齐切换账号弹框：item 支持 备注/解绑，需带上 bindingId 和原始字段
         function populate(bindingList) {
+            var prevCount = deviceList.length
             var arr = []
             for (var i = 0; i < bindingList.length; i++) {
                 var b = bindingList[i]
@@ -640,6 +641,11 @@ Rectangle {
                 })
             }
             deviceList = arr
+            // 扫码绑定弹窗开着时列表变多 → iOS 扫码绑定成功，关弹窗提示
+            if (loginScanBindPopup.opened && arr.length > prevCount) {
+                loginScanBindPopup.close()
+                showToast("绑定成功")
+            }
         }
 
         // 备注修改后就地更新列表项
@@ -675,12 +681,57 @@ Rectangle {
 
             Item { Layout.preferredHeight: 40 }
 
-            Text {
-                text: "选择设备"
-                font.family: "PingFang HK"
-                font.pixelSize: 24
-                font.weight: Font.Medium
-                color: "#FFFFFF"
+            // ⭐ 2026-08-16：标题右侧加「扫码绑定」入口（对齐主页面账号管理弹框）
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 34
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "选择设备"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 24
+                    font.weight: Font.Medium
+                    color: "#FFFFFF"
+                }
+
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: selScanBindRow.width + 20
+                    height: 30
+                    radius: 6
+                    color: selScanBindArea.containsMouse ? "#4f6af0" : "#607AFB"
+
+                    Row {
+                        id: selScanBindRow
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Image {
+                            source: "images/sbbd.png"
+                            width: 14; height: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            smooth: true
+                        }
+                        Text {
+                            text: "扫码绑定"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 13
+                            color: "#FFFFFF"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: selScanBindArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: loginScanBindPopup.open()
+                    }
+                }
             }
 
             Item { Layout.preferredHeight: 8 }
@@ -883,6 +934,157 @@ Rectangle {
             }
         }
     }
+    // ============ 选择设备页：扫码绑定弹窗 ============
+    // ⭐ 2026-08-16：登录阶段 WebSocket 未连接收不到绑定推送，弹窗开着时每 3 秒
+    //   静默重发一次第一步登录（只回 bindingList），列表变多即绑定成功（见 populate）。
+    Popup {
+        id: loginScanBindPopup
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 320
+        height: 344
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 0
+
+        property string qrCodeContent: ""
+
+        onOpened: {
+            qrCodeContent = ""
+            HttpClient.getQRCodeData()
+            bindPollTimer.start()
+        }
+        onClosed: bindPollTimer.stop()
+
+        background: Rectangle {
+            color: "#2b2b2b"
+            radius: 12
+        }
+
+        contentItem: Column {
+            spacing: 0
+
+            // 标题栏
+            Item {
+                width: parent.width
+                height: 44
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "设备绑定"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 16
+                    font.bold: true
+                    color: "#FFFFFF"
+                }
+
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: loginScanCloseArea.containsMouse ? "#ef4444" : "transparent"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: "#FFFFFF"
+                    }
+
+                    MouseArea {
+                        id: loginScanCloseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: loginScanBindPopup.close()
+                    }
+                }
+            }
+
+            // 内容区
+            Rectangle {
+                width: parent.width
+                height: loginScanBindPopup.height - 44
+                color: "#1f1f1f"
+                radius: 12
+
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: 12
+                    color: "#1f1f1f"
+                }
+
+                Column {
+                    anchors.top: parent.top
+                    anchors.topMargin: 16
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: 15
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "请使用iOS设备扫描二维码"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 12
+                        color: "#9ca3af"
+                    }
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 180
+                        height: 180
+                        radius: 8
+                        color: "#e8e8e8"
+
+                        QRCodeGenerator {
+                            anchors.centerIn: parent
+                            width: 160
+                            height: 160
+                            text: loginScanBindPopup.qrCodeContent
+                            foreground: "#000000"
+                            background: "#e8e8e8"
+                            margin: 2
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "加载中..."
+                            font.pixelSize: 14
+                            color: "#666666"
+                            visible: loginScanBindPopup.qrCodeContent === ""
+                        }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "扫码后在iOS设备上确认绑定"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 11
+                        color: "#6b7280"
+                    }
+                }
+            }
+        }
+    }
+
+    // 扫码绑定期间静默刷新绑定列表（第一步登录只回 bindingList，不进主页）
+    Timer {
+        id: bindPollTimer
+        interval: 3000
+        repeat: true
+        onTriggered: {
+            if (loginPage.isLoggingIn) return
+            HttpClient.login(loginUsername.text.trim(), loginPassword.text.trim(), 1, "", false)
+        }
+    }
+
     // ============ 选择设备页：备注弹框（对齐切换账号弹框功能）============
     Dialog {
         id: selectRemarkDialog
@@ -1103,6 +1305,14 @@ Rectangle {
 
         function onUnbindFailed(code, message) {
             showToast("解绑失败: " + message)
+        }
+
+        function onQrCodeDataReceived(controlUsername) {
+            loginScanBindPopup.qrCodeContent = controlUsername
+        }
+
+        function onQrCodeDataFailed(code, message) {
+            showToast("获取二维码失败: " + message)
         }
     }
 
