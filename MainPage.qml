@@ -1287,14 +1287,13 @@ Rectangle {
                     }
                 }
 
-                // ⭐ 2026-08-16：半屏/全屏下拉。全屏=截图区铺满整个主界面（隐藏实时流/慢放），
-                //   半屏=恢复左右分栏。对齐老 java「全屏(F)」把截图这一块铺满。
+                // ⭐ 2026-08-16：半屏/全屏点击切换。全屏=截图区铺满整个主界面，半屏=恢复左右分栏。
                 Rectangle {
                     id: gridViewModeBtn
                     width: fsModeBtnRow.width + 24
                     height: 32
                     radius: 8
-                    color: fsModeBtnArea.containsMouse || gridViewModeMenu.visible ? "#3A3A3A" : "#292929"
+                    color: fsModeBtnArea.containsMouse ? "#3A3A3A" : "#292929"
                     anchors.verticalCenter: parent.verticalCenter
                     
                     Row {
@@ -1315,12 +1314,6 @@ Rectangle {
                             color: "#FAFAFA"
                             anchors.verticalCenter: parent.verticalCenter
                         }
-                        Image {
-                            source: "images/down.png"
-                            width: 8; height: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            smooth: true
-                        }
                     }
                     
                     MouseArea {
@@ -1328,32 +1321,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: gridViewModeMenu.visible = !gridViewModeMenu.visible
-                    }
-
-                    Menu {
-                        id: gridViewModeMenu
-                        y: gridViewModeBtn.height + 4
-                        width: 90
-                        background: Rectangle {
-                            implicitWidth: 90
-                            color: "#292929"
-                            radius: 8
-                            border.color: "#3A3A3A"
-                            border.width: 1
-                        }
-                        DarkMenuItem {
-                            text: "半屏"
-                            onTriggered: {
-                                if (mainPage.gridFullscreenMode) toggleGridFullscreen()
-                            }
-                        }
-                        DarkMenuItem {
-                            text: "全屏"
-                            onTriggered: {
-                                if (!mainPage.gridFullscreenMode) toggleGridFullscreen()
-                            }
-                        }
+                        onClicked: toggleGridFullscreen()
                     }
                 }
                 
