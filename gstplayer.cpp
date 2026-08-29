@@ -1108,11 +1108,14 @@ bool GstPlayer::createPipeline()
     // 此处无 webrtcbin/appsrc，源可用性已在上方 pluginsAvailable 校验过，故视为 OK。
     bool srcOk = m_useSRT ? true
                           : (m_useWebRTC ? (m_webrtcbin && m_rtph264depay) : (m_appsrc != nullptr));
+    // §90：截图保存支路元素只在支路可用时才要求非空（禁用=降级运行，实时画面照常）
+    const bool frameBranchOk = m_frameSaveDisabled
+        || (m_h264FrameQueue && m_h264FrameConvert && m_h264FrameEncoder
+            && m_h264FrameParse && m_h264FrameCaps && m_h264FrameAppsink);
     if (!srcOk || !m_h264parse || !m_naluTee || !m_naluQueue || !m_naluAppsink
         || !m_queueDepay || !m_decoder || !m_queueDecode ||
         !m_displayQueue || !m_convert || !m_appsink ||
-        !m_rawFrameTee || !m_h264FrameQueue || !m_h264FrameConvert || !m_h264FrameEncoder
-        || !m_h264FrameParse || !m_h264FrameCaps || !m_h264FrameAppsink ||
+        !m_rawFrameTee || !frameBranchOk ||
         !m_videoBalance || !m_gamma) {
         qCritical() << "❌ 创建 GStreamer 元素失败";
         emit error("创建 GStreamer 元素失败");
@@ -1220,9 +1223,8 @@ bool GstPlayer::createPipeline()
                 m_queueDepay, m_decoder, m_queueDecode,
                 m_download, m_videoScale, m_videoBalance, m_gamma, m_rawFrameTee,
                 m_displayQueue, m_convert, m_appsink,
-                m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder, m_h264FrameParse,
-                m_h264FrameCaps, m_h264FrameAppsink,
                 nullptr);
+            // §90：截图保存支路元素改由 linkRawFrameTeeBranch 按需入 bin（支路禁用时不入）
 
             if (!linkNaluTeeBranch()
                 || !gst_element_link_many(m_queueDepay, m_decoder, m_queueDecode,
@@ -1240,9 +1242,8 @@ bool GstPlayer::createPipeline()
                 m_queueDepay, m_decoder, m_queueDecode,
                 m_videoScale, m_videoBalance, m_gamma, m_rawFrameTee,
                 m_displayQueue, m_convert, m_appsink,
-                m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder, m_h264FrameParse,
-                m_h264FrameCaps, m_h264FrameAppsink,
                 nullptr);
+            // §90：截图保存支路元素改由 linkRawFrameTeeBranch 按需入 bin（支路禁用时不入）
 
             if (!linkNaluTeeBranch()
                 || !gst_element_link_many(m_queueDepay, m_decoder, m_queueDecode,
@@ -1308,9 +1309,8 @@ bool GstPlayer::createPipeline()
                 m_queueDepay, m_decoder, m_queueDecode,
                 m_download, m_videoScale, m_videoBalance, m_gamma, m_rawFrameTee,
                 m_displayQueue, m_convert, m_appsink,
-                m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder, m_h264FrameParse,
-                m_h264FrameCaps, m_h264FrameAppsink,
                 nullptr);
+            // §90：截图保存支路元素改由 linkRawFrameTeeBranch 按需入 bin（支路禁用时不入）
 
             if (!gst_element_link(m_rtph264depay, m_h264parse) || !linkNaluTeeBranch()
                 || !gst_element_link_many(m_queueDepay, m_decoder, m_queueDecode,
@@ -1329,9 +1329,8 @@ bool GstPlayer::createPipeline()
                 m_queueDepay, m_decoder, m_queueDecode,
                 m_videoScale, m_videoBalance, m_gamma, m_rawFrameTee,
                 m_displayQueue, m_convert, m_appsink,
-                m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder, m_h264FrameParse,
-                m_h264FrameCaps, m_h264FrameAppsink,
                 nullptr);
+            // §90：截图保存支路元素改由 linkRawFrameTeeBranch 按需入 bin（支路禁用时不入）
 
             if (!gst_element_link(m_rtph264depay, m_h264parse) || !linkNaluTeeBranch()
                 || !gst_element_link_many(m_queueDepay, m_decoder, m_queueDecode,
@@ -1417,9 +1416,8 @@ bool GstPlayer::createPipeline()
                 m_queueDepay, m_decoder, m_queueDecode,
                 m_download, m_videoScale, m_videoBalance, m_gamma, m_rawFrameTee,
                 m_displayQueue, m_convert, m_appsink,
-                m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder, m_h264FrameParse,
-                m_h264FrameCaps, m_h264FrameAppsink,
                 nullptr);
+            // §90：截图保存支路元素改由 linkRawFrameTeeBranch 按需入 bin（支路禁用时不入）
 
             if (!gst_element_link(m_appsrc, m_h264parse) || !linkNaluTeeBranch()
                 || !gst_element_link_many(m_queueDepay, m_decoder, m_queueDecode,
@@ -1437,9 +1435,8 @@ bool GstPlayer::createPipeline()
                 m_queueDepay, m_decoder, m_queueDecode,
                 m_videoScale, m_videoBalance, m_gamma, m_rawFrameTee,
                 m_displayQueue, m_convert, m_appsink,
-                m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder, m_h264FrameParse,
-                m_h264FrameCaps, m_h264FrameAppsink,
                 nullptr);
+            // §90：截图保存支路元素改由 linkRawFrameTeeBranch 按需入 bin（支路禁用时不入）
 
             if (!gst_element_link(m_appsrc, m_h264parse) || !linkNaluTeeBranch()
                 || !gst_element_link_many(m_queueDepay, m_decoder, m_queueDecode,
@@ -1604,12 +1601,18 @@ void GstPlayer::destroyPipeline()
     m_displayQueue = nullptr;
     m_clockSync = nullptr;
     m_rawFrameTee = nullptr;
-    m_h264FrameQueue = nullptr;
-    m_h264FrameConvert = nullptr;
-    m_h264FrameEncoder = nullptr;
-    m_h264FrameParse = nullptr;
-    m_h264FrameCaps = nullptr;
-    m_h264FrameAppsink = nullptr;
+    // §90：保存支路元素改在 linkRawFrameTeeBranch 里才入 bin——若在入 bin 前管线就失败销毁，
+    //   这些元素没有父级、不随管线释放，须手动 unref（有父级的随管线销毁，置空即可）
+    auto dropIfUnparented = [](GstElement *&e) {
+        if (e && !GST_OBJECT_PARENT(e)) gst_object_unref(e);
+        e = nullptr;
+    };
+    dropIfUnparented(m_h264FrameQueue);
+    dropIfUnparented(m_h264FrameConvert);
+    dropIfUnparented(m_h264FrameEncoder);
+    dropIfUnparented(m_h264FrameParse);
+    dropIfUnparented(m_h264FrameCaps);
+    dropIfUnparented(m_h264FrameAppsink);
     m_h264FrameEncoderName.clear();
     m_convert = nullptr;
     m_appsink = nullptr;
@@ -1633,7 +1636,18 @@ void GstPlayer::destroyPipeline()
     m_frameIndex = 0;
     m_naluFrameIndex.store(0, std::memory_order_release);
     m_firstFrame = false;
-    resetH264FrameState();
+    // §88：管线重建不再 resetH264FrameState()——看门狗自愈/心跳清屏重连都会经过这里，
+    //   原来把帧索引清零+保护区间全删，紧接着 createH264FrameBranch 换会话前缀并后台删光
+    //   旧前缀 .h264 文件，而 QML 刻意保留截图格子（"断线重连后保留抓拍"）→ 客户看到的
+    //   截图全成了无底层数据的假图（缩略图是解码缓存残影，切帧/放大/慢放全空；更坏的是
+    //   帧号从 0 重计，几分钟后旧截图会解出新会话的错误画面）。帧库生命周期改随「观看会话」，
+    //   仅 resetCaptureSession()（QML resetStreamStateForSwitch：切设备/切账号/退登录）才清。
+    //   这里只清 pending 发号队列：垂死管线 probe 已发号但 appsink 未消费的号，
+    //   不能留给新管线首帧错领（错位虽不致命，但帧号-内容对应会漂移几帧）。
+    {
+        QMutexLocker frameLock(&m_h264FrameMutex);
+        m_pendingH264FrameIndexes.clear();
+    }
 
     destroyEncodePipeline();
 }
@@ -1919,42 +1933,76 @@ static QByteArray extractSpsPpsFromAnnexB(const guint8 *raw, int rawSize)
 
 bool GstPlayer::createH264FrameBranch()
 {
+    m_frameSaveDisabled = false;
     m_rawFrameTee = gst_element_factory_make("tee", "raw_frame_tee");
+    if (!m_rawFrameTee) {
+        // tee 属 coreelements 基础插件，缺它 displayQueue/naluQueue 等也全建不出来，管线必死，保持致命
+        qCritical() << "❌ 创建 raw_frame_tee 失败（coreelements 基础插件缺失）";
+        emit error("创建 GStreamer 基础元素失败");
+        return false;
+    }
     m_h264FrameQueue = gst_element_factory_make("queue", "h264_frame_queue");
     m_h264FrameConvert = gst_element_factory_make("videoconvert", "h264_frame_convert");
     const H264FrameQuality q = chooseH264FrameQuality();
     qDebug() << "🎚️ 截图帧编码画质档位:" << q.tier
              << " qp-i=" << q.qpI << " max-bitrate=" << q.maxBitrateKbps;
-    m_h264FrameEncoder = gst_element_factory_make("mfh264enc", "h264_frame_encoder");
-    if (m_h264FrameEncoder) {
-        m_h264FrameEncoderName = "mfh264enc";
-        setIntIfExists(m_h264FrameEncoder, "gop-size", 1);
-        setIntIfExists(m_h264FrameEncoder, "bitrate", q.bitrateKbps);
-        setIntIfExists(m_h264FrameEncoder, "max-bitrate", q.maxBitrateKbps);
-        setIntIfExists(m_h264FrameEncoder, "qp-i", q.qpI);
-        setBoolIfExists(m_h264FrameEncoder, "low-latency", TRUE);
-        setIntIfExists(m_h264FrameEncoder, "quality-vs-speed", 0);
-    } else {
-        m_h264FrameEncoder = gst_element_factory_make("x264enc", "h264_frame_encoder");
+    // §90：编码器候选链 mf→qsv→amf→nv→x264→openh264。
+    //   原来只试 mfh264enc→x264enc：精简版/N 版 Windows 无 MediaFoundation，而 x264 插件
+    //   又没进安装包 → 两个全空 → 整条管线建不起来 → 永久黑屏。现在优先硬编（qsv/amf/nv
+    //   的插件 DLL 一直随包），最后软编兜底（x264/openh264 已补进 pack.bat）。
+    m_h264FrameEncoder = nullptr;
+    m_h264FrameEncoderName.clear();
+    static const char *const kH264EncoderCandidates[] = {
+        "mfh264enc", "qsvh264enc", "amfh264enc", "nvh264enc", "x264enc", "openh264enc"
+    };
+    for (const char *candidate : kH264EncoderCandidates) {
+        m_h264FrameEncoder = gst_element_factory_make(candidate, "h264_frame_encoder");
         if (m_h264FrameEncoder) {
-            m_h264FrameEncoderName = "x264enc";
+            m_h264FrameEncoderName = candidate;
+            break;
+        }
+    }
+    if (m_h264FrameEncoder) {
+        if (m_h264FrameEncoderName == "x264enc") {
             setIntIfExists(m_h264FrameEncoder, "key-int-max", 1);
             // 软编：恒定量化(QP)，与硬编同档对齐，文件大小随分辨率自然伸缩
             setStringIfExists(m_h264FrameEncoder, "pass", "quant");
             setUIntIfExists(m_h264FrameEncoder, "quantizer", q.qpI);
             setStringIfExists(m_h264FrameEncoder, "tune", "zerolatency");
             setStringIfExists(m_h264FrameEncoder, "speed-preset", "veryfast");
+        } else {
+            // mf/qsv/amf/nv/openh264 属性名不完全一致，set*IfExists 对不存在的属性静默跳过
+            setIntIfExists(m_h264FrameEncoder, "gop-size", 1);
+            setIntIfExists(m_h264FrameEncoder, "bitrate", q.bitrateKbps);
+            setIntIfExists(m_h264FrameEncoder, "max-bitrate", q.maxBitrateKbps);
+            setIntIfExists(m_h264FrameEncoder, "qp-i", q.qpI);
+            setBoolIfExists(m_h264FrameEncoder, "low-latency", TRUE);
+            setIntIfExists(m_h264FrameEncoder, "quality-vs-speed", 0);
         }
     }
     m_h264FrameParse = gst_element_factory_make("h264parse", "h264_frame_parse");
     m_h264FrameCaps = gst_element_factory_make("capsfilter", "h264_frame_caps");
     m_h264FrameAppsink = gst_element_factory_make("appsink", "h264_frame_sink");
 
-    if (!m_rawFrameTee || !m_h264FrameQueue || !m_h264FrameConvert || !m_h264FrameEncoder
+    if (!m_h264FrameQueue || !m_h264FrameConvert || !m_h264FrameEncoder
         || !m_h264FrameParse || !m_h264FrameCaps || !m_h264FrameAppsink) {
-        qCritical() << "❌ 创建 H.264 独立帧保存支路失败";
-        emit error("创建 H.264 独立帧保存支路失败");
-        return false;
+        // §90：支路降级为可选——原来这里 return false 把整条 WebRTC 管线拉死，
+        //   看门狗每 30s 重建又在同处失败 = 无限循环永久黑屏。截图/慢放没了可以忍，画面必须有。
+        qWarning() << "⚠️ H.264 帧保存支路不可用（候选编码器 mf/qsv/amf/nv/x264/openh264 全部创建失败），"
+                      "截图/慢放帧库停用，实时画面不受影响";
+        captureDebugLog("GST", "createH264FrameBranch DEGRADED: no usable H264 encoder, frame-save disabled");
+        auto dropUnusedElement = [](GstElement *&e) {
+            if (e) { gst_object_unref(e); e = nullptr; }
+        };
+        dropUnusedElement(m_h264FrameQueue);
+        dropUnusedElement(m_h264FrameConvert);
+        dropUnusedElement(m_h264FrameEncoder);
+        dropUnusedElement(m_h264FrameParse);
+        dropUnusedElement(m_h264FrameCaps);
+        dropUnusedElement(m_h264FrameAppsink);
+        m_h264FrameEncoderName.clear();
+        m_frameSaveDisabled = true;
+        return true;
     }
 
     // §23.17b（用户定）：leaky 一律 downstream，不区分分辨率——落盘支路（mfh264enc 每帧 IDR + 写盘）
@@ -1985,49 +2033,53 @@ bool GstPlayer::createH264FrameBranch()
 
     m_h264FrameDirectory = QCoreApplication::applicationDirPath() + "/captures/frames";
     QDir().mkpath(m_h264FrameDirectory);
-    m_h264SessionPrefix = QString("s_%1").arg(QDateTime::currentMSecsSinceEpoch());
-    // ⭐ 清理上一会话残留的 .h264 帧：文件名带 session 前缀(s_<时间戳>_)，重连/重建管线后
-    //    旧前缀文件无人引用，原清理只遍历内存集合够不到它们 → 会无限累积(无盘网吧网络目录越来越大越来越卡)。
-    // §23.16：清理整体移到后台线程——原来在主线程枚举+逐个删除上百文件，freeze_diag 实锤单次挂主线程
-    //    1.4~2.0s（createH264FrameBranch 在主线程被调用）。先定好本会话前缀，后台只删「非本前缀」的
-    //    孤儿文件，与本会话并发写入的新帧天然无冲突。
-    {
-        const QString dir = m_h264FrameDirectory;
-        const QString keepPrefix = m_h264SessionPrefix;
-        QThreadPool::globalInstance()->start([dir, keepPrefix]() {
-            QDir frameDir(dir);
-            const QStringList staleFrames = frameDir.entryList(QStringList() << "*.h264", QDir::Files);
-            int removed = 0;
-            for (const QString &f : staleFrames) {
-                if (f.startsWith(keepPrefix)) continue;
-                if (frameDir.remove(f)) removed++;
-            }
-            if (removed > 0) {
-                qDebug() << "🗑️ H.264 帧支路: 后台清理上一会话残留" << removed << "个 .h264 文件";
-            }
-        });
+    // §88：会话前缀/帧库只在「新观看会话」初始化（首次建管线，或 resetCaptureSession 之后）。
+    //   同一会话内的管线重建（看门狗自愈/心跳清屏重连/切网重协商）沿用旧前缀、帧号继续递增——
+    //   已有截图/慢放引用的帧文件不删、保护区间不丢，断流重连后截图依然可切帧/放大/慢放。
+    if (m_h264SessionPrefix.isEmpty()) {
+        m_h264SessionPrefix = QString("s_%1").arg(QDateTime::currentMSecsSinceEpoch());
+        // ⭐ 清理上一会话残留的 .h264 帧：文件名带 session 前缀(s_<时间戳>_)，换会话后
+        //    旧前缀文件无人引用，原清理只遍历内存集合够不到它们 → 会无限累积(无盘网吧网络目录越来越大越来越卡)。
+        // §23.16：清理整体移到后台线程——原来在主线程枚举+逐个删除上百文件，freeze_diag 实锤单次挂主线程
+        //    1.4~2.0s（createH264FrameBranch 在主线程被调用）。先定好本会话前缀，后台只删「非本前缀」的
+        //    孤儿文件，与本会话并发写入的新帧天然无冲突。
+        {
+            const QString dir = m_h264FrameDirectory;
+            const QString keepPrefix = m_h264SessionPrefix;
+            QThreadPool::globalInstance()->start([dir, keepPrefix]() {
+                QDir frameDir(dir);
+                const QStringList staleFrames = frameDir.entryList(QStringList() << "*.h264", QDir::Files);
+                int removed = 0;
+                for (const QString &f : staleFrames) {
+                    if (f.startsWith(keepPrefix)) continue;
+                    if (frameDir.remove(f)) removed++;
+                }
+                if (removed > 0) {
+                    qDebug() << "🗑️ H.264 帧支路: 后台清理上一会话残留" << removed << "个 .h264 文件";
+                }
+            });
+        }
+        resetH264FrameState();
     }
-    resetH264FrameState();
     qDebug() << "✅ H.264 独立帧保存支路:" << m_h264FrameEncoderName << "目录:" << m_h264FrameDirectory << "前缀:" << m_h264SessionPrefix;
     return true;
 }
 
 bool GstPlayer::linkRawFrameTeeBranch(GstElement *upstreamTail, GstElement *displayHead)
 {
-    if (!upstreamTail || !displayHead || !m_rawFrameTee || !m_h264FrameQueue || !m_h264FrameAppsink) {
+    if (!upstreamTail || !displayHead || !m_rawFrameTee) {
         captureDebugLog("GST", "linkRawFrameTeeBranch FAIL missing elements");
         return false;
     }
+    // §90：支路可用性以标志+元素双重判断（防御性：任一元素为空都按禁用走，只挂显示支路）
+    const bool saveBranchEnabled = !m_frameSaveDisabled
+        && m_h264FrameQueue && m_h264FrameConvert && m_h264FrameEncoder
+        && m_h264FrameParse && m_h264FrameCaps && m_h264FrameAppsink;
     if (!gst_element_link(upstreamTail, m_rawFrameTee)) {
         captureDebugLog("GST", "linkRawFrameTeeBranch FAIL upstream->rawTee");
         return false;
     }
 
-    if (!gst_element_link_many(m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder,
-                               m_h264FrameParse, m_h264FrameCaps, m_h264FrameAppsink, nullptr)) {
-        captureDebugLog("GST", "linkRawFrameTeeBranch FAIL save branch link");
-        return false;
-    }
     if (!gst_element_link_many(displayHead, m_convert, m_appsink, nullptr)) {
         captureDebugLog("GST", "linkRawFrameTeeBranch FAIL display branch link");
         return false;
@@ -2042,6 +2094,22 @@ bool GstPlayer::linkRawFrameTeeBranch(GstElement *upstreamTail, GstElement *disp
         return false;
     }
     gst_object_unref(displaySink);
+
+    if (!saveBranchEnabled) {
+        // §90：无可用编码器 → tee 只挂显示支路，截图/慢放帧库停用，直播完整可用
+        captureDebugLog("GST", "linkRawFrameTeeBranch OK (frame-save disabled, display-only)");
+        return true;
+    }
+
+    // §90：保存支路元素在这里才入 bin（原在 6 处 gst_bin_add_many 调用点写死，禁用时无法逐点摘除）
+    gst_bin_add_many(GST_BIN(m_pipeline),
+        m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder,
+        m_h264FrameParse, m_h264FrameCaps, m_h264FrameAppsink, nullptr);
+    if (!gst_element_link_many(m_h264FrameQueue, m_h264FrameConvert, m_h264FrameEncoder,
+                               m_h264FrameParse, m_h264FrameCaps, m_h264FrameAppsink, nullptr)) {
+        captureDebugLog("GST", "linkRawFrameTeeBranch FAIL save branch link");
+        return false;
+    }
 
     m_rawFrameTeePadSave = gst_element_request_pad_simple(m_rawFrameTee, "src_%u");
     GstPad *saveSink = gst_element_get_static_pad(m_h264FrameQueue, "sink");
@@ -2122,10 +2190,22 @@ void GstPlayer::resetH264FrameState()
     m_pendingH264FrameIndexes.clear();
     m_h264AvailableFrames.clear();
     m_h264ValidRanges.clear();
-    m_nextH264ValidRangeId = 1;
+    // §88：rangeId 计数器**不再归 1**——CaptureManager 的截图项跨会话持有旧 id，
+    //   归 1 会让新会话发出的 id 与旧截图撞号：删旧截图时 unregister 把新截图的
+    //   保护区间误摘掉 → 新截图的帧被滚动清理提前删除。id 全程单调即可。
     m_nextH264FrameIndex.store(0, std::memory_order_release);
     m_oldestH264Frame.store(-1, std::memory_order_release);
     m_newestH264Frame.store(-1, std::memory_order_release);
+}
+
+// §88：观看会话结束（切设备/切账号/退出登录，QML resetStreamStateForSwitch 调用）——
+//   清帧库索引/保护区间，并作废会话前缀；下次建管线时 createH264FrameBranch
+//   重新起前缀并后台清理旧前缀遗留文件。管线重建（同会话）不走这里。
+void GstPlayer::resetCaptureSession()
+{
+    resetH264FrameState();
+    m_h264SessionPrefix.clear();
+    qDebug() << "🧹 §88 观看会话清场：截图/慢放帧库已清，下次拉流换新会话前缀";
 }
 
 void GstPlayer::queuePendingH264FrameIndex(qint64 frameIndex)
@@ -3331,7 +3411,10 @@ void GstPlayer::connectWebRTC(const QString &host, const QString &app, const QSt
     m_reconnectScheduled.store(false);
     m_offerSentForSession.store(false);  // 🔥 重置会话级 Offer 标志
     m_offerInProgress.store(false);      // 🔥 重置 Offer 进行中标志
-    srsLog(QString("[熔断·已重置] 三标志清零，开始建管线"));
+    // §92 新会话：代数 +1，旧会话在途的 SRS HTTP 应答/重试定时器全部作废
+    m_srsSessionGen.fetch_add(1);
+    m_srsAnswerApplied.store(false);
+    srsLog(QString("[熔断·已重置] 三标志清零，开始建管线（§92 会话代数=%1）").arg(m_srsSessionGen.load()));
     
     m_webrtcStatus = "Connecting...";
     emit webrtcStatusChanged(m_webrtcStatus);
@@ -3370,6 +3453,7 @@ void GstPlayer::disconnectWebRTC()
 {
     qDebug() << "🔌 WebRTC 断开连接";
     
+    m_srsSessionGen.fetch_add(1);  // §92 会话拆除：作废在途 SRS 应答/重试
     stop();
     destroyPipeline();
     
@@ -4801,6 +4885,9 @@ void GstPlayer::onOfferCreated(GstWebRTCSessionDescription *offer)
 
 void GstPlayer::sendOfferToSRS(const QString &sdp)
 {
+    // §92 捕获发出时的会话代数：应答回来时代数不一致 = 迟到的旧会话应答，丢弃
+    const quint64 sessionGen = m_srsSessionGen.load();
+
     // 🔥 保存 SDP 用于重试
     m_pendingOfferSdp = sdp;
     
@@ -4850,7 +4937,17 @@ void GstPlayer::sendOfferToSRS(const QString &sdp)
     QNetworkReply *reply = m_networkManager->post(request, jsonData);
     
     srsLog(QString("[http] POST Offer 到 SRS（已重试 %1 次，§54 常驻重试无上限）").arg(retryCount));
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, sessionGen]() {
+        // §92 会话代际守卫：期间发生过 connect/disconnect（看门狗重建、「设备开始推流」二次重播等）
+        //   → 本应答属于已销毁的旧会话，其 Answer 的 ICE 凭据对新管线是毒药，直接丢弃。
+        if (sessionGen != m_srsSessionGen.load()) {
+            qDebug() << "⚠️ §92 丢弃旧会话的 SRS 应答（代数" << sessionGen
+                     << "≠ 当前" << m_srsSessionGen.load() << "）";
+            srsLog(QString("[http] ⚠️ §92 丢弃旧会话应答（发出时代数=%1，当前=%2）")
+                   .arg(sessionGen).arg(m_srsSessionGen.load()));
+            reply->deleteLater();
+            return;
+        }
         if (reply->error() != QNetworkReply::NoError) {
             // ⭐ §54：HTTP 传输失败（网络抖动/服务器瞬断）不再一次失败即死，2s 后常驻重试。
             //   设备停推/离线时 QML 会 disconnectWebRTC → m_useWebRTC=false 自动终止循环。
@@ -4860,8 +4957,9 @@ void GstPlayer::sendOfferToSRS(const QString &sdp)
             m_webrtcStatus = "HTTP Error, retrying...";
             emit webrtcStatusChanged(m_webrtcStatus);
             m_offerInProgress.store(false);
-            QTimer::singleShot(2000, this, [this]() {
-                if (!m_pendingOfferSdp.isEmpty() && m_useWebRTC) {
+            QTimer::singleShot(2000, this, [this, sessionGen]() {
+                // §92 旧会话的重试定时器不许给新会话补发 Offer（会多开一个 SRS 会话、双 Answer 串话）
+                if (sessionGen == m_srsSessionGen.load() && !m_pendingOfferSdp.isEmpty() && m_useWebRTC) {
                     qDebug() << "🔄 HTTP 失败后重试发送 Offer 到 SRS...";
                     sendOfferToSRS(m_pendingOfferSdp);
                 }
@@ -4902,8 +5000,9 @@ void GstPlayer::sendOfferToSRS(const QString &sdp)
                     }
                     m_webrtcStatus = QString("等待流就绪(%1)...").arg(n);
                     emit webrtcStatusChanged(m_webrtcStatus);
-                    QTimer::singleShot(2000, this, [this]() {
-                        if (!m_pendingOfferSdp.isEmpty() && m_useWebRTC) {
+                    QTimer::singleShot(2000, this, [this, sessionGen]() {
+                        // §92 同上：旧会话重试作废
+                        if (sessionGen == m_srsSessionGen.load() && !m_pendingOfferSdp.isEmpty() && m_useWebRTC) {
                             sendOfferToSRS(m_pendingOfferSdp);
                         }
                     });
@@ -4952,6 +5051,19 @@ void GstPlayer::sendOfferToSRS(const QString &sdp)
 
 void GstPlayer::onAnswerReceived(const QString &sdp)
 {
+    // §92 防串话兜底：管线已拆（迟到应答）或本会话已应用过 Answer（双应答）都不再设置。
+    //   webrtcbin 不支持在同一实例上换 ICE 凭据重协商，二次 SRD 只会毒化 ICE → FAILED。
+    if (!m_webrtcbin) {
+        qDebug() << "⚠️ §92 忽略 Answer：webrtcbin 已销毁（迟到的旧会话应答）";
+        srsLog(QString("[answer] ⚠️ §92 忽略：webrtcbin 已销毁"));
+        return;
+    }
+    if (m_srsAnswerApplied.exchange(true)) {
+        qDebug() << "⚠️ §92 忽略重复 Answer：本会话已设置过远程描述";
+        srsLog(QString("[answer] ⚠️ §92 忽略：本会话已应用过 Answer（双应答串话）"));
+        return;
+    }
+
     qDebug() << "📥 收到 Answer SDP，设置远程描述...";
     
     // 解析 SDP

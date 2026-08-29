@@ -237,6 +237,9 @@ public:
     Q_INVOKABLE QString getAccountDeviceDisplay(const QString &username) const;
     // ⭐ 2026-08-01：清除某账号本地记住的设备（iOS 改密解绑后旧记忆失效，登录 1004 自动回退时用）
     Q_INVOKABLE void clearAccountDevice(const QString &username);
+    // ⭐ 2026-08-22：单密码策略——只保留最后登录成功账号的密码，其余账号只记账号名
+    //   （登录成功后调用；不动账号列表顺序，也不动 lastUsername）
+    Q_INVOKABLE void clearOtherAccountPasswords(const QString &keepUsername);
     // ⭐ 2026-08-01：只更新某账号本地记住的设备（不动密码）。登录成功后把"服务器实际绑定的设备"
     //   写回本地，保证在线灯设备名与画面设备一致、且下次启动不再带着已解绑的旧设备去登（避免再次 1004）。
     Q_INVOKABLE void updateAccountDevice(const QString &username, const QString &deviceUsername, const QString &deviceDisplay);

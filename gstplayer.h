@@ -94,6 +94,9 @@ public:
     int registerH264ValidRange(qint64 start, qint64 end) override;
     void updateH264ValidRange(int id, qint64 start, qint64 end) override;
     void unregisterH264ValidRange(int id) override;
+    // §88：观看会话结束（切设备/切账号/退登录）时显式清截图/慢放帧库。
+    //   管线重建（看门狗自愈/心跳清屏重连/切网重协商）不再清帧库——否则截图格子全成假图。
+    Q_INVOKABLE void resetCaptureSession();
 
     QImage grabCurrentFrame() override;
 
@@ -344,6 +347,9 @@ private:
     GstElement *m_h264FrameAppsink = nullptr;
     GstPad *m_rawFrameTeePadDisplay = nullptr;
     GstPad *m_rawFrameTeePadSave = nullptr;
+    // §90：本机拿不到任何 H264 编码器时置 true——截图/慢放帧保存停用，实时画面不受影响
+    //   （原来编码器缺失=整条管线建不起来=永久黑屏，见 2026-08-25 客户日志）
+    bool m_frameSaveDisabled = false;
     QString m_h264FrameEncoderName;
     QString m_h264FrameDirectory;
     QString m_h264SessionPrefix;
@@ -429,6 +435,12 @@ private:
     std::atomic<bool> m_reconnectScheduled{false}; // 防止重复重连
     std::atomic<bool> m_srsError{false};  // 🔥 SRS错误标志（防止无效重连）
     std::atomic<int> m_srsRetryCount{0};  // 🔥 SRS 400错误重试计数
+    // §92 SRS 会话代际守卫：connectWebRTC/disconnectWebRTC 时 +1。HTTP 应答/重试定时器
+    //   携带发出时的代数，回来时代数不一致 = 上一条已销毁会话的迟到应答 → 丢弃。
+    //   修「看门狗重建后 0.6s 又被『设备开始推流』触发二次重播，两个 SRS Answer(不同 ice-ufrag)
+    //   先后灌进同一条新管线 → ICE 凭据错乱 → ICE FAILED 长时间黑屏」（8-28 日志实锤）。
+    std::atomic<quint64> m_srsSessionGen{0};
+    std::atomic<bool> m_srsAnswerApplied{false};  // §92 本会话已应用过 Answer（同会话双应答兜底）
     QString m_pendingOfferSdp;  // 🔥 待重试的 Offer SDP
     // ⭐ §53.24：P2P Offer 风暴防抖（设备端会话抖动时连发多个 Offer，只应用最后一个）
     qint64 m_lastOfferAppliedMs = 0;      // 上次真正应用 Offer 的时刻

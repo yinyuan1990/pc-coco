@@ -258,7 +258,7 @@ public:
     static constexpr int DEFAULT_GRID_ROWS = 2;
     static constexpr int DEFAULT_GRID_COLS = 2;
     static constexpr int MAX_GRID_SIZE = 10;
-    static constexpr int MAX_PRE_POST_FRAMES = 1000;  // 前抓拍最大120（QML限制），后抓拍可无限
+    static constexpr int MAX_PRE_POST_FRAMES = 1000;  // 前抓拍最大240（QML挡位），后抓拍可无限
     static constexpr int RING_BUFFER_SIZE = 120;  // 2秒 @ 60fps
     
     // 相机设定默认值（与 GStreamer videobalance/gamma 一致）
@@ -332,6 +332,7 @@ public:
     Q_INVOKABLE void resetCameraSettings();  // 恢复默认
     Q_INVOKABLE void zoomLog(const QString &msg);  // 缩放调试日志写入 zp.txt
     Q_INVOKABLE void aiZoomLog(const QString &msg);  // 自动放大(AI识别)调试日志写入 ai_zoom.txt
+    Q_INVOKABLE void cornerDiag(const QString &msg);  // ⭐ 2026-08-18 圆角白边诊断（QML侧直写 corner_diag.txt）
     
     // 慢放抓拍模式
     bool slowMotionActive() const { return m_slowMotionActive; }

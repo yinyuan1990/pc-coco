@@ -26,7 +26,7 @@
 // §43 版本号单一来源：CMakeLists.txt 顶部 PHOENIX_APP_VERSION 经编译宏注入。
 // 兜底值仅在极端情况（未走 CMake 配置）下生效。
 #ifndef PHOENIX_VERSION_STR
-#define PHOENIX_VERSION_STR "1.0.0"
+#define PHOENIX_VERSION_STR "1.1.5"
 #endif
 
 static QString qlgxPath()

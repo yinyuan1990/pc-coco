@@ -19,9 +19,10 @@ Rectangle {
     width: itemWidth
     height: col.height + 8
     z: 200          // 弹在按钮上方，别被同排后面的按钮盖住
-    color: "#E8F5E9"
-    radius: 4
-    border.color: "#A5D6A7"
+    // ⭐ 2026-08-16 对齐老 java gstream 深色下拉：#292929 底/#3A3A3A 边框
+    color: "#292929"
+    radius: 8
+    border.color: "#3A3A3A"
     border.width: 1
 
     function toggle() { visible = !visible }
@@ -39,7 +40,7 @@ Rectangle {
                 width: menu.width - 8
                 height: 28
                 radius: 3
-                color: itemArea.containsMouse ? "#C8E6C9" : (active ? "#A5D6A7" : "transparent")
+                color: itemArea.containsMouse ? "#3A3A3A" : (active ? "#4A4A4A" : "transparent")
 
                 Text {
                     anchors.centerIn: parent
@@ -47,7 +48,7 @@ Rectangle {
                     font.pixelSize: 12
                     font.family: "PingFang HK"
                     font.bold: parent.active
-                    color: "#263238"
+                    color: "#FAFAFA"
                 }
 
                 MouseArea {

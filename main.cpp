@@ -2,6 +2,11 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QSurfaceFormat>
+#include <QQuickWindow>
+#include <QSGRendererInterface>
+#include <QSysInfo>
+#include <QScreen>
+#include <QQuickItem>
 #include <QQuickStyle>
 #include <QIcon>
 #include <QFile>
@@ -21,6 +26,8 @@
 #include <windows.h>
 #include <tlhelp32.h>
 #include <shellapi.h>
+#include <dwmapi.h>   // ⭐ 2026-08-18 主界面圆角白边：Win11 原生圆角兜底
+#pragma comment(lib, "dwmapi.lib")
 #endif
 #include "videoplayer.h"
 // #include "webrtcclient.h"  // ⭐ 废弃，改用 GstPlayer WebRTCBin
@@ -114,6 +121,22 @@ static void stopLogWriterThread()
     g_logThread = nullptr;
 }
 
+// ⭐ 2026-08-18 圆角白边诊断：所有带「[圆角诊断]」标记的日志（C++ qDebug / QML console.log
+//   都可）额外单独落一份 corner_diag.txt（exe 同目录，启动时清空），供用户直接发回排查。
+//   低频行（启动 + 状态变化各几条），同步写盘无压力。
+static QString g_cornerDiagPath;
+static void appendCornerDiagLine(const QString &line)
+{
+    if (g_cornerDiagPath.isEmpty()) return;
+    QFile f(g_cornerDiagPath);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        f.write(QString("[%1] %2\n")
+                    .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz"), line)
+                    .toUtf8());
+        f.close();
+    }
+}
+
 // 自定义日志处理函数 - 入队即返回（不在调用线程碰磁盘）
 void customMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -135,6 +158,11 @@ void customMessageHandler(QtMsgType type, const QMessageLogContext &context, con
         g_logQueue.append(logLine);
     }
     g_logQueueCond.wakeOne();
+
+    // ⭐ 2026-08-18 圆角白边诊断：带标记的行额外落 corner_diag.txt
+    if (msg.contains(QLatin1String("[圆角诊断]"))) {
+        appendCornerDiagLine(msg);
+    }
     
     // Fatal：排干队列（后台线程负责真正落盘）后中止
     if (type == QtFatalMsg) {
@@ -613,7 +641,8 @@ int main(int argc, char *argv[])
             "srs_diag.txt",     // SRS/WHEP 诊断
             "srt_diag.txt",     // SRT 诊断
             "sh.txt",           // 其它诊断
-            "qlgx.txt"          // 其它诊断
+            "qlgx.txt",         // 其它诊断
+            "corner_diag.txt"   // ⭐ 2026-08-18 主界面圆角白边诊断
         };
         for (const QString &name : diagLogs) {
             QFile df(appDirPath + "/" + name);
@@ -621,6 +650,14 @@ int main(int argc, char *argv[])
                 df.close();
         }
     }
+
+    // ⭐ 2026-08-18 圆角白边诊断日志：路径就绪后立刻记录环境基础信息
+    g_cornerDiagPath = appDirPath + "/corner_diag.txt";
+    appendCornerDiagLine(QString("===== 圆角诊断启动 v%1 =====").arg(PHOENIX_VERSION_STR));
+    appendCornerDiagLine(QString("Qt=%1 OS=%2 (%3)")
+        .arg(QLatin1String(qVersion()), QSysInfo::prettyProductName(), QSysInfo::kernelVersion()));
+    appendCornerDiagLine(QString("默认SurfaceFormat: alphaBufferSize=%1（申请值，应为8）")
+        .arg(QSurfaceFormat::defaultFormat().alphaBufferSize()));
     
     // 清空 huanjing_log.txt（主日志）- 使用 Truncate 而非 Append
     g_logFile = new QFile(logPath);
@@ -794,9 +831,106 @@ int main(int argc, char *argv[])
             }
         });
     
+    // ⭐ 2026-08-18 修「主界面圆角四角白边（部分机型）第二弹」（默认先认为透明可用）：
+    //   白边根因 = 那些机型上 Qt 场景图落到软件渲染（显卡/驱动不支持 D3D11），
+    //   软件后端不支持逐像素透明窗口，"transparent" 底退化成白色，25px 圆角外露白。
+    //   对策：QML 加载完检测实际渲染后端，软件渲染 → 窗口底改不透明深色 +
+    //   通知 QML 关掉几何圆角（gWindowAlphaOk=false），并挂 Win11 原生
+    //   DWM 圆角兜底（系统合成器裁角，与渲染后端无关；Win10 调用失败自动忽略）。
+    engine.rootContext()->setContextProperty("gWindowAlphaOk", true);
+
     engine.loadFromModule("Aifs", "Main");
     
     qDebug() << "========== QML 加载完成，进入主循环 ==========";
+
+    // ⭐ 2026-08-18 [圆角诊断]：C++ 侧诊断全部 appendCornerDiagLine 直写 corner_diag.txt
+    //   （不经消息处理器转发，链路最短最可靠），同时 qDebug 镜像进主日志。
+    appendCornerDiagLine(QString("QML加载完成: rootObjects=%1").arg(engine.rootObjects().size()));
+    if (!engine.rootObjects().isEmpty()) {
+        QQuickWindow *mainWin = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+        appendCornerDiagLine(QString("根对象: %1 cast为QQuickWindow=%2")
+            .arg(QString::fromLatin1(engine.rootObjects().first()->metaObject()->className()),
+                 mainWin ? "成功" : "失败"));
+        if (mainWin) {
+            auto checkWindowAlpha = [mainWin, &engine]() {
+                QSGRendererInterface *ri = mainWin->rendererInterface();
+                const int api = ri ? int(ri->graphicsApi()) : -1;
+                auto apiName = [](int a) -> const char * {
+                    switch (a) {
+                        case QSGRendererInterface::Software:   return "Software(软件渲染)";
+                        case QSGRendererInterface::OpenGL:     return "OpenGL";
+                        case QSGRendererInterface::Direct3D11: return "Direct3D11";
+                        case QSGRendererInterface::Direct3D12: return "Direct3D12";
+                        case QSGRendererInterface::Vulkan:     return "Vulkan";
+                        default:                               return "Unknown";
+                    }
+                };
+                const bool softwareBackend = !ri || ri->graphicsApi() == QSGRendererInterface::Software;
+                const bool noAlphaBuffer = mainWin->format().alphaBufferSize() <= 0;
+
+                auto diag = [](const QString &s) {
+                    appendCornerDiagLine(s);
+                    qDebug().noquote() << ("🔘 [圆角] " + s);  // 主日志镜像（不带诊断标记，避免重复落盘）
+                };
+                diag(QString("场景图就绪: graphicsApi=%1(%2) 实际format.alpha=%3 请求format.alpha=%4")
+                    .arg(api).arg(apiName(api))
+                    .arg(mainWin->format().alphaBufferSize())
+                    .arg(mainWin->requestedFormat().alphaBufferSize()));
+                diag(QString("窗口: color=%1 flags=0x%2 visibility=%3 dpr=%4 尺寸=%5x%6")
+                    .arg(mainWin->color().name(QColor::HexArgb))
+                    .arg(QString::number(quint32(mainWin->flags()), 16))
+                    .arg(int(mainWin->visibility()))
+                    .arg(mainWin->devicePixelRatio())
+                    .arg(mainWin->width()).arg(mainWin->height()));
+                if (QScreen *scr = mainWin->screen()) {
+                    diag(QString("屏幕: %1 %2x%3 dpr=%4")
+                        .arg(scr->name()).arg(scr->geometry().width()).arg(scr->geometry().height())
+                        .arg(scr->devicePixelRatio()));
+                }
+
+                // ⭐ 2026-08-18：Fusion 风格 ApplicationWindow 自带浅色默认 background（曾是白边元凶）。
+                //   这里检查运行包里 background:null 是否真的生效——若仍存在，白边来源就是它。
+                {
+                    QQuickItem *bgItem = mainWin->property("background").value<QQuickItem*>();
+                    if (bgItem) {
+                        diag(QString("⚠️ ApplicationWindow.background 仍存在: %1 尺寸=%2x%3 visible=%4 —— 白边疑似来源！Main.qml 的 background:null 未编译进当前包")
+                            .arg(QString::fromLatin1(bgItem->metaObject()->className()))
+                            .arg(bgItem->width()).arg(bgItem->height())
+                            .arg(bgItem->isVisible()));
+                    } else {
+                        diag("ApplicationWindow.background=null ✓（Fusion 默认白底已移除）");
+                    }
+                }
+
+                if (softwareBackend || (noAlphaBuffer && ri->graphicsApi() == QSGRendererInterface::OpenGL)) {
+                    diag(QString("判定: 透明窗口不可用（software=%1 alpha=%2）→ gWindowAlphaOk=false，窗口底改不透明#1F1F1F，QML圆角关闭，挂DWM原生圆角兜底")
+                        .arg(softwareBackend).arg(mainWin->format().alphaBufferSize()));
+                    engine.rootContext()->setContextProperty("gWindowAlphaOk", false);
+                    mainWin->setColor(QColor("#1F1F1F"));
+#ifdef Q_OS_WIN
+                    // 兜底路径才挂 Win11 原生 DWM 圆角（系统合成器裁角，与渲染后端无关，
+                    //   Win10 调用失败自动忽略）。正常机型不碰系统边框，避免引入浅色描边。
+                    HWND hwnd = reinterpret_cast<HWND>(mainWin->winId());
+                    const int cornerPref = 2;  // DWMWCP_ROUND（Win11 22000+）
+                    HRESULT hr = DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */,
+                                                       &cornerPref, sizeof(cornerPref));
+                    diag(QString("DWM原生圆角: hr=0x%1（0=成功，Win10失败正常）")
+                        .arg(QString::number(quint32(hr), 16)));
+#endif
+                } else {
+                    diag(QString("判定: 透明窗口可用 → gWindowAlphaOk=true，走 QML 几何圆角（根radius+顶底栏分角radius）"));
+                }
+            };
+            appendCornerDiagLine(QString("场景图初始化状态: %1")
+                .arg(mainWin->isSceneGraphInitialized() ? "已就绪(直接检测)" : "未就绪(挂sceneGraphInitialized信号等待)"));
+            if (mainWin->isSceneGraphInitialized()) {
+                checkWindowAlpha();
+            } else {
+                // sceneGraphInitialized 从渲染线程发出，指定 mainWin 为接收者 → 自动队列回主线程执行
+                QObject::connect(mainWin, &QQuickWindow::sceneGraphInitialized, mainWin, checkWindowAlpha);
+            }
+        }
+    }
 
     // ⭐ §23.13：取主线程真句柄（GetCurrentThread 是伪句柄，跨线程无效）供看门狗挂起拍栈
 #ifdef Q_OS_WIN

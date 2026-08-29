@@ -1925,6 +1925,21 @@ void CaptureManager::zoomLog(const QString &msg)
     });
 }
 
+// ⭐ 2026-08-18 圆角白边诊断：QML 侧直写 corner_diag.txt（Append，不清空——
+//   main.cpp 启动时已统一清空过；不依赖消息处理器转发，与 C++ 侧诊断同文件汇合）
+void CaptureManager::cornerDiag(const QString &msg)
+{
+    const QString line = QString("[%1] [QML] %2\n")
+        .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz"), msg);
+    diagTxtLogPool()->start([line]() {
+        QFile file(QCoreApplication::applicationDirPath() + "/corner_diag.txt");
+        if (file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            file.write(line.toUtf8());
+            file.close();
+        }
+    });
+}
+
 void CaptureManager::aiZoomLog(const QString &msg)
 {
     // 自动放大(AI 牌识别)专用调试日志，与 zp.txt 分开，便于排查"为什么识别失败"。

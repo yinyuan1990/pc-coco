@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
 import Aifs.Components
 
 // 应用入口：根据登录状态加载不同页面
@@ -9,6 +8,11 @@ ApplicationWindow {
     id: mainWindow
     visible: true
     title: "幻境"
+    // ⭐ 2026-08-18 修「主界面圆角白边」真凶：Fusion 风格的 ApplicationWindow 自带一层
+    //   浅色默认 background（画在透明窗口底之上、页面内容之下）。圆角裁掉的四角露出的
+    //   是这层白底而非桌面——所以之前改 Alpha 通道、换 OpacityMask/几何圆角全都无效。
+    //   置 null 彻底移除这层默认背景，四角才能真正透出桌面。
+    background: null
     
     // 登录状态
     property bool isLoggedIn: false
@@ -35,6 +39,10 @@ ApplicationWindow {
     minimumWidth: 400
     minimumHeight: loginViewHeight
 
+    // ⭐ 2026-08-22：被挤下线等强制退出的原因——退出前由 MainPage 写入，
+    //   登录页加载完成后弹提示框展示并清空（否则 toast 随主页销毁用户看不到）
+    property string logoutNotice: ""
+
     // ⭐ 2026-08-16：登录前三个视图的窗口高度（按内容实测，注册页独立不共用登录的基座尺寸）
     readonly property int loginViewHeight: 520
     readonly property int registerViewHeight: 660
@@ -54,6 +62,9 @@ ApplicationWindow {
     }
     flags: Qt.Window | Qt.FramelessWindowHint
     color: "transparent"
+    // ⭐ 2026-08-18 [圆角诊断]：窗口底色任何变化都记录——本次白边真凶正是
+    //   switchTimer 里一处遗留代码把底色改成不透明浅色，而诊断日志都打在变色之前。
+    onColorChanged: console.log("[圆角诊断] 窗口底色变为", color)
     
     // 居中显示
     Component.onCompleted: {
@@ -149,9 +160,14 @@ ApplicationWindow {
             mainWindow.height = newHeight
             mainWindow.minimumWidth = 1280
             mainWindow.minimumHeight = 720
-            // 窗口背景色根据PC等级区分：等级2绿色，等级1蓝色
-            var pcLevel = HttpClient.pcActivationLevel()
-            mainWindow.color = (pcLevel >= 2) ? "#C8DFC0" : "#CAD9F2"
+            // ⭐ 2026-08-18 修「主界面圆角白边」终极真凶：这里原来按 PC 等级把窗口底色
+            //   改成不透明浅绿/浅蓝（#C8DFC0/#CAD9F2，老 Java 版遗留的等级底色）。
+            //   MainPage 圆角裁掉的四角露出的正是这层不透明窗口底——诊断日志打在
+            //   onLoaded 时刻（switchTimer 之前），所以日志里窗口色永远是 #00000000，
+            //   一直没抓到。窗口底必须保持透明四角才能透出桌面；软件渲染兜底时
+            //   维持 main.cpp 设的不透明深色。
+            mainWindow.color = (typeof gWindowAlphaOk !== "undefined" && !gWindowAlphaOk)
+                ? "#1F1F1F" : "transparent"
             
             // 再延迟一帧后恢复可见
             showTimer.start()
@@ -416,19 +432,12 @@ ApplicationWindow {
         //   异步模式下错误同样经 status===Loader.Error 上报，不影响下面的错误捕获。
         asynchronous: true
 
-        // ⭐ 2026-08-15 需求：主界面四角 25px 圆弧。窗口本身无边框+透明底，
-        //   顶栏/底栏是方角矩形会把角画满，单给 MainPage 根加 radius 不够，
-        //   这里用 OpacityMask 对整个主页面内容裁圆角。最大化/全屏时贴屏显示，关掉圆角省一层离屏渲染。
-        layer.enabled: isLoggedIn
-                       && mainWindow.visibility !== Window.Maximized
-                       && mainWindow.visibility !== Window.FullScreen
-        layer.effect: OpacityMask {
-            maskSource: Item {
-                width: mainPageLoader.width
-                height: mainPageLoader.height
-                Rectangle { anchors.fill: parent; radius: 25 }
-            }
-        }
+        // ⭐ 2026-08-18 修「主界面圆角白边（三改）」：OpacityMask 离屏遮罩在部分机型
+        //   会沿圆弧渗出白色光晕（登录页用普通 Rectangle radius 就没有 → 透明窗口本身没问题，
+        //   问题出在 layer+效果这条路径）。弃用整窗遮罩，改为与登录页同款的原生几何圆角：
+        //   MainPage 根 radius:25 + 顶栏/底栏用分角圆角属性圆掉外侧两角（见 MainPage.qml），
+        //   顺带省掉一层全窗离屏渲染。gWindowAlphaOk=false（软件渲染）时 main.cpp 已把窗口底
+        //   改成不透明深色兜底。
         
         onActiveChanged: {
             console.log("Main.qml: mainPageLoader.active 变化:", active)
@@ -491,7 +500,9 @@ ApplicationWindow {
             mainWindow.height = loginViewHeight
             mainWindow.x = (Screen.width - 400) / 2
             mainWindow.y = (Screen.height - loginViewHeight) / 2
-            mainWindow.color = "transparent"
+            // 软件渲染兜底（gWindowAlphaOk=false）时保持 main.cpp 设的不透明深色
+            mainWindow.color = (typeof gWindowAlphaOk !== "undefined" && !gWindowAlphaOk)
+                ? "#1F1F1F" : "transparent"
             
             // 延迟一帧后解除最大尺寸限制
             Qt.callLater(function() {
@@ -617,6 +628,11 @@ ApplicationWindow {
                 // ⭐ 2026-08-16：登录/注册/选设备切换时窗口高度跟随视图自适应
                 item.currentViewChanged.connect(applyLoginStageHeight)
                 applyLoginStageHeight()
+                // ⭐ 2026-08-22：被挤下线回到登录页 → 弹提示框说明原因
+                if (mainWindow.logoutNotice.length > 0) {
+                    item.showNotice(mainWindow.logoutNotice)
+                    mainWindow.logoutNotice = ""
+                }
             }
         }
     }

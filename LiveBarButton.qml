@@ -25,8 +25,9 @@ Rectangle {
     // 布局是按 implicit 尺寸排的，直接写 width 会被布局覆盖掉
     implicitWidth: Math.max(minWidth, contentRow.implicitWidth + 16)
     implicitHeight: 32
-    radius: 4
-    color: (hovered || highlighted) ? "#C8E6C9" : "#80000000"
+    // ⭐ 2026-08-16 对齐老 java gstream GpuView 深色按钮：#292929 底/#FAFAFA 字/圆角 8，悬停 #3A3A3A
+    radius: 8
+    color: (hovered || highlighted) ? "#3A3A3A" : "#292929"
 
     Row {
         id: contentRow
@@ -39,7 +40,7 @@ Rectangle {
             font.pixelSize: 12
             font.family: "PingFang HK"
             font.bold: true
-            color: (btn.hovered || btn.highlighted) ? "#263238" : "#FFFFFF"
+            color: "#FAFAFA"
             anchors.verticalCenter: parent.verticalCenter
         }
 

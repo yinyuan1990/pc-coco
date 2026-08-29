@@ -22,11 +22,93 @@ Rectangle {
 
     signal loginSuccess(string server)
 
+    // ⭐ 2026-08-22：被挤下线等强制退出场景——回到登录页时弹提示框说明原因
+    //   （由 Main.qml loginLoader.onLoaded 读取 mainWindow.logoutNotice 调用）
+    function showNotice(msg) {
+        logoutNoticeText.text = msg
+        logoutNoticePopup.open()
+    }
+
+    Popup {
+        id: logoutNoticePopup
+        anchors.centerIn: parent
+        width: 320
+        modal: true
+        dim: true
+        closePolicy: Popup.CloseOnEscape
+        padding: 0
+
+        background: Rectangle {
+            color: "#1F1F1F"
+            radius: 12
+            border.color: "#3A3A3A"
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 0
+
+            Item { width: 1; height: 22 }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "下线提示"
+                font.family: "PingFang HK"
+                font.pixelSize: 17
+                font.weight: Font.Medium
+                color: "#FFFFFF"
+            }
+
+            Item { width: 1; height: 14 }
+
+            Text {
+                id: logoutNoticeText
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 272
+                text: ""
+                font.family: "PingFang HK"
+                font.pixelSize: 13
+                color: "#C8C8C8"
+                lineHeight: 1.35
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Item { width: 1; height: 20 }
+
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 140
+                height: 36
+                radius: 8
+                color: logoutNoticeOkArea.containsMouse ? "#4f6af0" : "#607AFB"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "知道了"
+                    font.family: "PingFang HK"
+                    font.pixelSize: 14
+                    color: "#FFFFFF"
+                }
+
+                MouseArea {
+                    id: logoutNoticeOkArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: logoutNoticePopup.close()
+                }
+            }
+
+            Item { width: 1; height: 22 }
+        }
+    }
+
     // ⭐ 播放内核：选择入口已从登录页隐藏，固定用 GStreamer（Component.onCompleted 强制回写，
     //   清掉历史上可能存过的 webengine 选择）。MainPage 仍读取此值。
     Settings {
         id: kernelSettings
-        property string playbackKernel: "webengine"  // "gstreamer" | "webengine"（2026-08-16 默认改网页内核）
+        property string playbackKernel: "gstreamer"  // "gstreamer" | "webengine"（2026-08-18 默认改回 gstreamer 内核）
     }
 
     // 当前视图：login / selectDevice / register
@@ -77,11 +159,12 @@ Rectangle {
             loginError = ""
 
             // ⭐ 两步登录：第一步不带设备账号。服务器本次未绑定设备（deviceUsername 空）
-            //   且账号有绑定 iOS 设备时，先显示绑定列表让用户选，不进主页；
-            //   用户点选后带 deviceUsername 再登录一次（本回调再次进入，走下面进主页分支）。
-            //   没有绑定设备则直接进主页。
-            if ((!deviceUsername || deviceUsername.length === 0) && bindingList && bindingList.length > 0) {
-                deviceSelectForm.populate(bindingList)
+            //   时一律先进「选择设备」页，用户点选后带 deviceUsername 再登录一次
+            //   （本回调再次进入，走下面进主页分支）。
+            //   ⭐ 2026-08-22：绑定列表为空（新注册账号）也要进选择页——主页「切换账号」已隐藏，
+            //   这里的「扫码绑定」是唯一绑定入口，不能再直接跳进主页。
+            if (!deviceUsername || deviceUsername.length === 0) {
+                deviceSelectForm.populate(bindingList || [])
                 currentView = "selectDevice"
                 return
             }
@@ -119,6 +202,9 @@ Rectangle {
             if (typedUsername.length > 0 && typedUsername !== canonicalUsername) {
                 HttpClient.removeAccount(typedUsername)
             }
+            // ⭐ 2026-08-22 单密码策略：只保留本次登录成功账号的密码，
+            //   其他历史账号只留账号名（下拉选中后需手输密码）
+            HttpClient.clearOtherAccountPasswords(canonicalUsername)
 
             // 触发登录成功信号（跳转主页）
             loginPage.loginSuccess(HttpClient.baseUrl())
@@ -352,6 +438,7 @@ Rectangle {
                         anchors.right: loginUsernameClearBtn.left
                         height: parent.height
                         placeholderText: "请输入用户名"
+                        // （右侧依次是：清空 ✕ → 账号下拉 ▾，见下方 accountDropdownBtn）
                         font.family: "PingFang HK"
                         font.pixelSize: 18
                         color: "#E0E0E0"
@@ -376,8 +463,7 @@ Rectangle {
                     // 清除按钮
                     Item {
                         id: loginUsernameClearBtn
-                        anchors.right: parent.right
-                        anchors.rightMargin: 8
+                        anchors.right: accountDropdownBtn.left
                         anchors.verticalCenter: parent.verticalCenter
                         width: loginUsername.text.length > 0 ? 24 : 0
                         height: parent.height
@@ -399,6 +485,144 @@ Rectangle {
                                 loginUsername.text = ""
                                 loginPassword.text = ""
                                 loginUsername.forceActiveFocus()
+                            }
+                        }
+                    }
+
+                    // ⭐ 2026-08-22：账号下拉按钮（✕ 右边）。登录成功的账号都会存到本地，
+                    //   点开可选历史账号；只有最后登录成功的账号带密码，其余选中后需手输密码。
+                    Item {
+                        id: accountDropdownBtn
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: accountDropdown.accountList.length > 0 ? 26 : 0
+                        height: parent.height
+                        visible: accountDropdown.accountList.length > 0
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: accountDropdown.visible ? "\u25B4" : "\u25BE"   // ▴ / ▾
+                            font.pixelSize: 13
+                            color: accountDropdownArea.containsMouse ? "#607AFB" : "#808080"
+                        }
+
+                        MouseArea {
+                            id: accountDropdownArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (accountDropdown.visible) {
+                                    accountDropdown.close()
+                                } else {
+                                    accountDropdown.refresh()
+                                    accountDropdown.open()
+                                }
+                            }
+                        }
+                    }
+
+                    // ⭐ 账号下拉面板（紧贴账号输入框下方）
+                    Popup {
+                        id: accountDropdown
+                        y: parent.height + 6
+                        width: parent.width
+                        padding: 6
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                        property var accountList: HttpClient.getSavedAccounts()
+
+                        function refresh() {
+                            accountList = HttpClient.getSavedAccounts()
+                        }
+
+                        background: Rectangle {
+                            color: "#292929"
+                            radius: 12
+                            border.color: "#3a3a3a"
+                            border.width: 1
+                        }
+
+                        contentItem: ListView {
+                            implicitHeight: Math.min(contentHeight, 44 * 5)
+                            clip: true
+                            model: accountDropdown.accountList
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            delegate: Rectangle {
+                                width: ListView.view.width
+                                height: 44
+                                radius: 8
+                                color: acctRowArea.containsMouse ? "#333A55" : "transparent"
+
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData
+                                    font.family: "PingFang HK"
+                                    font.pixelSize: 15
+                                    color: "#E0E0E0"
+                                }
+
+                                // 有密码（=最后登录成功的账号）打个小标
+                                Text {
+                                    anchors.right: acctRowDelete.left
+                                    anchors.rightMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: HttpClient.getAccountPassword(modelData).length > 0 ? "已记住密码" : ""
+                                    font.family: "PingFang HK"
+                                    font.pixelSize: 11
+                                    color: "#607AFB"
+                                }
+
+                                MouseArea {
+                                    id: acctRowArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        loginUsername.text = modelData
+                                        // 只有最后登录成功的账号本地留有密码，其余为空需手输
+                                        loginPassword.text = HttpClient.getAccountPassword(modelData)
+                                        accountDropdown.close()
+                                        if (loginPassword.text.length === 0) {
+                                            loginPassword.forceActiveFocus()
+                                        }
+                                    }
+                                }
+
+                                // 删除该本地账号记录（不影响服务器账号）
+                                Item {
+                                    id: acctRowDelete
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 6
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 24
+                                    height: 24
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "\u2715"
+                                        font.pixelSize: 9
+                                        color: acctRowDeleteArea.containsMouse ? "#ff4444" : "#5a5a5a"
+                                    }
+
+                                    MouseArea {
+                                        id: acctRowDeleteArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            HttpClient.removeAccount(modelData)
+                                            accountDropdown.refresh()
+                                            if (accountDropdown.accountList.length === 0) {
+                                                accountDropdown.close()
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -660,7 +884,8 @@ Rectangle {
             deviceList = arr
         }
 
-        // 解绑成功后移除列表项；列表空了则不带设备再登录一次直接进主页
+        // 解绑成功后移除列表项；列表空了则不带设备再登录一次刷新状态
+        // （⭐ 2026-08-22 起：空列表不再直接进主页，停留在本页保留扫码绑定入口）
         function removeByBindingId(bindingId) {
             var arr = deviceList.filter(function(d) { return d.bindingId !== bindingId })
             deviceList = arr
@@ -696,40 +921,82 @@ Rectangle {
                     color: "#FFFFFF"
                 }
 
-                Rectangle {
+                Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: selScanBindRow.width + 20
-                    height: 30
-                    radius: 6
-                    color: selScanBindArea.containsMouse ? "#4f6af0" : "#607AFB"
+                    spacing: 8
 
-                    Row {
-                        id: selScanBindRow
-                        anchors.centerIn: parent
-                        spacing: 4
+                    // ⭐ 2026-08-22：刷新按钮——重发一次第一步登录拉最新绑定列表
+                    //   （手机上刚绑定/解绑后，这里点一下即可看到最新列表）
+                    Rectangle {
+                        width: selRefreshRow.width + 20
+                        height: 30
+                        radius: 6
+                        color: selRefreshArea.containsMouse ? "#4a4a4a" : "#3A3A3A"
+                        border.color: "#555555"
+                        border.width: 1
 
-                        Image {
-                            source: "images/sbbd.png"
-                            width: 14; height: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            smooth: true
+                        Row {
+                            id: selRefreshRow
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            Text {
+                                text: loginPage.isLoggingIn ? "刷新中..." : "⟳ 刷新"
+                                font.family: "PingFang HK"
+                                font.pixelSize: 13
+                                color: "#FFFFFF"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                         }
-                        Text {
-                            text: "扫码绑定"
-                            font.family: "PingFang HK"
-                            font.pixelSize: 13
-                            color: "#FFFFFF"
-                            anchors.verticalCenter: parent.verticalCenter
+
+                        MouseArea {
+                            id: selRefreshArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            enabled: !loginPage.isLoggingIn
+                            onClicked: {
+                                loginPage.isLoggingIn = true
+                                loginError = ""
+                                HttpClient.login(loginUsername.text.trim(), loginPassword.text.trim(), 1, "", false)
+                            }
                         }
                     }
 
-                    MouseArea {
-                        id: selScanBindArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: loginScanBindPopup.open()
+                    Rectangle {
+                        width: selScanBindRow.width + 20
+                        height: 30
+                        radius: 6
+                        color: selScanBindArea.containsMouse ? "#4f6af0" : "#607AFB"
+
+                        Row {
+                            id: selScanBindRow
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            Image {
+                                source: "images/sbbd.png"
+                                width: 14; height: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                smooth: true
+                            }
+                            Text {
+                                text: "扫码绑定"
+                                font.family: "PingFang HK"
+                                font.pixelSize: 13
+                                color: "#FFFFFF"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: selScanBindArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: loginScanBindPopup.open()
+                        }
                     }
                 }
             }
@@ -738,7 +1005,10 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: "该账号绑定了以下 iOS 设备，点击选择要控制的设备"
+                // ⭐ 2026-08-22：空列表（新注册账号）给出绑定引导
+                text: deviceSelectForm.deviceList.length > 0
+                      ? "该账号绑定了以下 iOS 设备，点击选择要控制的设备"
+                      : "该账号还未绑定 iOS 设备，请点击右上角「扫码绑定」，绑定后点「刷新」"
                 font.family: "PingFang HK"
                 font.pixelSize: 13
                 color: "#9E9E9E"
@@ -1917,8 +2187,8 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        // ⭐ 2026-08-16 需求：播放模式改为网页内核（覆盖历史保存的 gstreamer 选择）
-        kernelSettings.playbackKernel = "webengine"
+        // ⭐ 2026-08-18 需求：默认改回 gstreamer 内核（覆盖历史保存的 webengine 选择）
+        kernelSettings.playbackKernel = "gstreamer"
         loadSavedAccount()
     }
 }

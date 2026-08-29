@@ -780,6 +780,28 @@ QString HttpClient::getAccountPassword(const QString &username) const
     return password;
 }
 
+// ⭐ 2026-08-22：单密码策略——只保留最后登录成功账号的密码，其余账号只记账号名。
+//   直接改 QSettings 的 account/<u>/password 字段，不走 saveAccount（那会把账号挪到列表头、改 lastUsername）
+void HttpClient::clearOtherAccountPasswords(const QString &keepUsername)
+{
+    QSettings settings("HuanJing", "Login");
+    QStringList accounts = settings.value("accounts", QStringList()).toStringList();
+    int cleared = 0;
+    for (const QString &u : accounts) {
+        if (u == keepUsername) continue;
+        settings.beginGroup(QString("account/%1").arg(u));
+        if (!settings.value("password", "").toString().isEmpty()) {
+            settings.setValue("password", "");
+            ++cleared;
+        }
+        settings.endGroup();
+    }
+    settings.sync();
+    if (cleared > 0) {
+        qDebug() << "[Login] 单密码策略：已清除" << cleared << "个其他账号的本地密码，仅保留" << keepUsername;
+    }
+}
+
 // ⭐ 2026-08-01：清除某账号本地记住的设备（iOS 改密解绑后旧设备记忆失效，登录 1004 自动回退时调用）
 void HttpClient::clearAccountDevice(const QString &username)
 {

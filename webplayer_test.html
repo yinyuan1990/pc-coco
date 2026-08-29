@@ -100,19 +100,10 @@
   const resBadgeEl = document.getElementById('resBadge')
 
   // ⭐ 2026-08-16：右上角「信息」按钮弃用（永久隐藏，代码保留）。
-  //   鼠标悬停画面 → 左上角只显示当前分辨率角标。
+  // ⭐ 2026-08-18 需求：左上角分辨率角标也不要了（永久隐藏，代码保留）。
   function applyStatsToggleVisibility() {
     if (toggleEl) toggleEl.style.display = 'none'
-    if (resBadgeEl) {
-      if (statsToggleHover) {
-        var w = videoEl.videoWidth || 0
-        var h = videoEl.videoHeight || 0
-        resBadgeEl.textContent = (w > 0 && h > 0) ? (w + '×' + h) : '--'
-        resBadgeEl.style.display = 'block'
-      } else {
-        resBadgeEl.style.display = 'none'
-      }
-    }
+    if (resBadgeEl) resBadgeEl.style.display = 'none'
   }
   function applyStatsPanelVisibility() {
     statsEl.style.display = statsOn ? 'block' : 'none'

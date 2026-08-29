@@ -5,7 +5,7 @@ project(Phoenix VERSION 0.1 LANGUAGES C CXX)
 # ⭐ §43 版本号单一来源：发版只改这一行！
 #   - autoupdater.cpp 经宏 PHOENIX_VERSION_STR 得到当前版本（不再硬编码）
 #   - pack.bat 解析本行生成 manifest.json / yqlversion_new.json
-set(PHOENIX_APP_VERSION "1.0.0")
+set(PHOENIX_APP_VERSION "1.1.6")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

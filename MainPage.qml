@@ -8,6 +8,19 @@ import Aifs.Components 1.0
 Rectangle {
     id: mainPage
     color: "#1F1F1F"  // ⭐ 2026-08-14 对齐 java gstream：主内容区深色底
+    // ⭐ 2026-08-18 修「主界面圆角白边（三改）」：弃用 Main.qml 的 OpacityMask 整窗遮罩
+    //   （部分机型沿圆弧渗白色光晕），改用与登录页同款的原生几何圆角。
+    //   根 Rectangle 负责四角底色圆弧；顶栏/底栏是方角满宽矩形会把角画满，
+    //   各自用分角圆角属性把外侧两角圆掉。最大化/全屏贴屏显示 → 圆角自动关闭。
+    //   gWindowAlphaOk=false（软件渲染，透明窗口必白）时 main.cpp 已把窗口底改不透明，圆角同时关闭。
+    readonly property int windowCornerRadius:
+        (typeof gWindowAlphaOk !== "undefined" && !gWindowAlphaOk) ? 0
+        : (Window.visibility === Window.Maximized || Window.visibility === Window.FullScreen) ? 0 : 25
+    radius: windowCornerRadius
+    // ⭐ 2026-08-18 [圆角诊断]：值变化即记录（captureManager.cornerDiag 直写 corner_diag.txt，
+    //   不依赖日志转发链路——上一轮实测 console.log 转发路径丢日志）
+    onWindowCornerRadiusChanged: captureManager.cornerDiag("windowCornerRadius 变为 " + windowCornerRadius
+        + " Window.visibility=" + Window.visibility)
     focus: true  // ⭐ 获取键盘焦点
     
     // ⭐ S键按下/释放检测（用于 S+滚轮 缩放）
@@ -196,9 +209,11 @@ Rectangle {
         property real panelColorS: 0     // 面板颜色饱和度 (0-1)，默认90%白色
         property real panelColorV: 0.9   // 面板颜色明度 (0-1)，默认90%白色
         property bool halfScreenViewMode: false  // 放大查看模式：false=全屏，true=半屏（覆盖截图view）
+        // ⭐ 2026-08-18：「截满全屏」开关持久化——抓拍数量达到行×列时截图区自动铺满全屏（老Java同款行为）
+        property bool autoCaptureFullscreen: false
         // ⭐ 播放内核选择（2026-06-24）：与 LoginPage 的 kernelSettings 同 app 域(Acard/Phoenix)、同名 key，
         //   登录页写入、这里读取，天然同步。默认 "gstreamer"。
-        property string playbackKernel: "webengine"  // "gstreamer" | "webengine"（2026-08-16 默认改网页内核）
+        property string playbackKernel: "gstreamer"  // "gstreamer" | "webengine"（2026-08-18 默认改回 gstreamer 内核）
         // ⭐ 2026-07-14：iOS 低功率/高功率采集开关（相机设定面板"还原"按钮旁）。
         //   仅影响 iOS 端"采集"帧率（低功率=钉30fps），不改变本 PC 端既有的"推送fps下发"逻辑；
         //   iOS 收到 ptype=lowPowerCapture 后自行判断落地。默认 false=高功率（与现网行为一致）。
@@ -270,7 +285,8 @@ Rectangle {
     property bool gridFullscreenMode: false
     
     // 抓拍全屏开关（当抓拍个数达到行×列时自动全屏）
-    property bool autoFullscreenOnCaptureFull: false
+    // ⭐ 2026-08-18：转正为顶部「截满全屏」按钮，状态持久化到 appSettings
+    property bool autoFullscreenOnCaptureFull: appSettings.autoCaptureFullscreen
     
     // 设备状态（来自 CONFIG_STATE 消息）
     property int deviceKbps: 0              // 码率
@@ -446,7 +462,9 @@ Rectangle {
                 // (b) 画面确实停了 → 走统一收口（停流+清屏+改状态）。
                 //     ⚠️ 必须带 fps 条件：P2P 直连的媒体不经服务器，STOMP 抖一下断了
                 //     但画面还在正常播时不能把人家的画面清掉；那种情况只点灯、不清屏。
-                if (hbAgeMs > 6000 && currentPlayingFps() === 0
+                // ⭐ §86：6s→10s。bug2 实测设备侧 7s 网络抖动（心跳+媒体同断）踩线触发清屏断流，
+                //   而抖动过后本可无感续播；杀进程场景只是晚 4 秒清屏，无伤大雅。
+                if (hbAgeMs > 10000 && currentPlayingFps() === 0
                         && (publishState === 1 || videoSurfaceDirty)) {
                     markDeviceOffline("心跳超时 " + hbAgeMs + "ms 且无画面帧", "设备已离线")
                 }
@@ -796,8 +814,8 @@ Rectangle {
         onGridRowsChanged: rowsInput.currentIndex = gridRows - 1
         onGridColsChanged: colsInput.currentIndex = gridCols - 1
         onPreFrameCountChanged: {
-            // model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120"]  最大120
-            var map = {"10": 0, "15": 1, "20": 2, "30": 3, "40": 4, "50": 5, "60": 6, "80": 7, "100": 8, "120": 9}
+            // ⭐ 2026-08-18：前挡位放开到 240（与后对称，帧源保留 3000 帧完全够用）
+            var map = {"10": 0, "15": 1, "20": 2, "30": 3, "40": 4, "50": 5, "60": 6, "80": 7, "100": 8, "120": 9, "150": 10, "180": 11, "200": 12, "240": 13}
             preFramesInput.currentIndex = map[preFrameCount.toString()] ?? 9  // 默认120
         }
         onPostFrameCountChanged: {
@@ -861,14 +879,9 @@ Rectangle {
         target: captureManager
         function onCaptureComplete(index) {
             // 抓拍完成后检查是否需要自动全屏
-            // ⭐ PC等级2(AI全能版)才能自动触发抓拍全屏，pc=1不允许自动触发
-            console.log("[抓拍全屏] onCaptureComplete: autoFullscreenOnCaptureFull=" + mainPage.autoFullscreenOnCaptureFull + ", count=" + captureManager.count + ", pcLevel=" + mainPage.pcActivationLevel)
-            
-            // PC等级检查：只有pc=2才能自动触发
-            if (mainPage.pcActivationLevel < 2) {
-                console.log("[抓拍全屏] PC等级1不允许自动触发抓拍全屏")
-                return
-            }
+            // ⭐ 2026-08-18 aihj 拍板：去掉 PC 等级门槛——顶部「截满全屏」按钮开着就生效，
+            //   否则用户开了按钮却不触发，看起来像 bug。
+            console.log("[抓拍全屏] onCaptureComplete: autoFullscreenOnCaptureFull=" + mainPage.autoFullscreenOnCaptureFull + ", count=" + captureManager.count)
             
             if (mainPage.autoFullscreenOnCaptureFull) {
                 var targetCount = captureManager.gridRows * captureManager.gridCols
@@ -960,6 +973,9 @@ Rectangle {
         anchors.right: parent.right
         height: 56
         color: "#1F1F1F"
+        // ⭐ 2026-08-18：窗口圆角改原生几何实现，顶栏圆掉外侧两角（与根 Rectangle 弧度一致）
+        topLeftRadius: mainPage.windowCornerRadius
+        topRightRadius: mainPage.windowCornerRadius
         
         // 窗口拖动区域（z=0，在菜单项之下）
         MouseArea {
@@ -1210,45 +1226,6 @@ Rectangle {
 
                 // ⭐ iOS 滤镜入口已隐藏 — 快捷键 P 替代菜单项, 见 Shortcut "P"
 
-                // 抓拍全屏开关（2026-08-14 需求：菜单栏不再显示，功能逻辑保留）
-                Row {
-                    visible: false
-                    spacing: 6
-                    
-                    Text {
-                        text: "抓拍全屏"
-                        font.family: "PingFang HK"
-                        font.pixelSize: 14
-                        color: "#FAFAFA"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    
-                    Rectangle {
-                        id: autoFullscreenSwitch
-                        width: 40
-                        height: 22
-                        radius: 11
-                        color: mainPage.autoFullscreenOnCaptureFull ? "#4CAF50" : "#90A4AE"
-                        anchors.verticalCenter: parent.verticalCenter
-                        
-                        Rectangle {
-                            width: 18
-                            height: 18
-                            radius: 9
-                            color: "#FFFFFF"
-                            x: mainPage.autoFullscreenOnCaptureFull ? parent.width - width - 2 : 2
-                            anchors.verticalCenter: parent.verticalCenter
-                            
-                            Behavior on x { NumberAnimation { duration: 150 } }
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: mainPage.autoFullscreenOnCaptureFull = !mainPage.autoFullscreenOnCaptureFull
-                        }
-                    }
-                }
                 
                 // 横向/纵向切换（⭐ 2026-08-14 对齐 java gstream：hxpl 图标 +「横向排列/纵向排列」）
                 Rectangle {
@@ -1322,6 +1299,51 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: toggleGridFullscreen()
+                    }
+                }
+
+                // ⭐ 2026-08-18：「截满全屏」开关（老Java同款）——抓拍数量截满行×列（如3x2截满6张）
+                //   时，截图区自动铺满全屏。点击切换开/关，状态持久化（appSettings.autoCaptureFullscreen）。
+                Rectangle {
+                    id: autoCaptureFsBtn
+                    width: autoCaptureFsBtnRow.width + 24
+                    height: 32
+                    radius: 8
+                    color: autoCaptureFsBtnArea.containsMouse ? "#3A3A3A" : "#292929"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Row {
+                        id: autoCaptureFsBtnRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        // 状态指示灯：绿=开启，灰=关闭
+                        Rectangle {
+                            width: 8; height: 8; radius: 4
+                            color: mainPage.autoFullscreenOnCaptureFull ? "#4CAF50" : "#6B6B6B"
+                            anchors.verticalCenter: parent.verticalCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                        }
+                        Text {
+                            text: "截满全屏"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 14
+                            color: mainPage.autoFullscreenOnCaptureFull ? "#FFFFFF" : "#FAFAFA"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: autoCaptureFsBtnArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            appSettings.autoCaptureFullscreen = !appSettings.autoCaptureFullscreen
+                            showToast(appSettings.autoCaptureFullscreen
+                                      ? "截满全屏已开启：抓拍截满后截图区自动全屏"
+                                      : "截满全屏已关闭")
+                        }
                     }
                 }
                 
@@ -1693,14 +1715,16 @@ Rectangle {
                         id: preFramesInput
                         anchors.fill: parent
                         visible: false
-                        model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120"]  // 最大120
+                        // ⭐ 2026-08-18 需求：前后挡位对称，前放开到 240。
+                        //   帧源两内核都滚动保留最近 3000 帧（H264_FRAME_KEEP_COUNT），
+                        //   C++ 上限 1000（MAX_PRE_POST_FRAMES），240 完全够；帧不够时自动收到最老可用帧。
+                        model: ["10", "15", "20", "30", "40", "50", "60", "80", "100", "120", "150", "180", "200", "240"]
                         onActivated: {
                             captureManager.preFrameCount = parseInt(currentText)
                         }
 
                         function syncIndex() {
                             var val = captureManager.preFrameCount
-                            if (val > 120) val = 120  // 限制最大120
                             var valStr = val.toString()
                             for (var i = 0; i < model.length; i++) {
                                 if (model[i] === valStr) { currentIndex = i; return; }
@@ -1882,12 +1906,22 @@ Rectangle {
                     color: "#FAFAFA"
                 }
 
+                // ⭐ 2026-08-18 需求：鼠标放上去滚轮加减步长（1~10）。
+                //   原 F5~F8 快捷键早已停用（enabled:false），这里成为唯一调节入口。
                 MouseArea {
                     anchors.fill: parent
                     hoverEnabled: true
                     ToolTip.visible: containsMouse
-                    ToolTip.text: "滚轮切帧步长"
+                    ToolTip.text: "滚轮切帧步长（鼠标滚轮加减）"
                     ToolTip.delay: 300
+                    onWheel: function(wheel) {
+                        wheel.accepted = true
+                        if (wheel.angleDelta.y > 0) {
+                            mainPage.frameStep = Math.min(10, mainPage.frameStep + 1)
+                        } else if (wheel.angleDelta.y < 0) {
+                            mainPage.frameStep = Math.max(1, mainPage.frameStep - 1)
+                        }
+                    }
                 }
             }
 
@@ -1989,8 +2023,12 @@ Rectangle {
                             border.width: 1
                         }
                         
+                        // ⭐ 2026-08-18：隐藏「切换账号」入口（老板拍板只留退出登录；
+                        //   弹框及切换逻辑代码保留——登录后自动切回选中设备等内部流程仍在用）
                         DarkMenuItem {
                             text: "切换账号"
+                            visible: false
+                            height: 0
                             onTriggered: showSwitchAccountDialog()
                         }
                         // ⭐ 2026-08-14：隐藏「修改登录密码」（代码保留，height=0 不占位）
@@ -2109,6 +2147,9 @@ Rectangle {
         anchors.bottom: parent.bottom
         height: 34
         color: "#292929"
+        // ⭐ 2026-08-18：窗口圆角改原生几何实现，底栏圆掉外侧两角（与根 Rectangle 弧度一致）
+        bottomLeftRadius: mainPage.windowCornerRadius
+        bottomRightRadius: mainPage.windowCornerRadius
 
         // 网络质量显示口径（excellent/good/fair/poor → 中文 + 颜色）
         function qualityText(q) {
@@ -2192,6 +2233,8 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
+                    // ⭐ 2026-08-18 需求：底部状态栏不再显示拉流方式（SRS/P2P/SRT），代码保留
+                    visible: false
                     text: mainPage.connectMode === 1 ? "P2P" : (mainPage.connectMode === 2 ? "SRT" : "SRS")
                     font.family: "Consolas"
                     font.pixelSize: 11
@@ -3133,6 +3176,8 @@ Rectangle {
                         id: videoContainer
                         anchors.fill: parent
                         anchors.margins: 2
+                        // ⭐ 2026-08-18：还原成 Aifs 悬停叠加式——画面铺满面板，底部按钮条
+                        //   叠加在画面底部、鼠标进入实时流范围才显示（去掉 8-16 的让出 52px）
                         clip: true
                         onWidthChanged: mainPage.clampVideoOffsets()
                         onHeightChanged: mainPage.clampVideoOffsets()
@@ -3458,34 +3503,22 @@ Rectangle {
                 visible: webrtcClient.isConnected()
             }
             
-            // 底部控制栏（移到 livePanel 层级，不被覆盖层遮挡）
+            // 底部控制栏
             // ⭐ 第五十章：这一排是「自带摄像头」版（固定5档/倍数变倍/前后置）。
             //   OTG 设备整排换成 OtgLiveControlBar（见下），这里不做逐按钮的 if-else。
-            // ⭐ 2026-08-16 需求：不再做「悬停才显示」的浮窗，常驻左下角；面板底色对齐
-            //   老 java SimpleWebRTCPlayerView.bottomLeftControls（rgba(255,255,255,0.18)
-            //   圆角10 + rgba(0,0,0,0.25) 边框，内边距 8/12），按钮排版不变。
-            Rectangle {
-                anchors.fill: liveControlBar
-                anchors.leftMargin: -12
-                anchors.rightMargin: -12
-                anchors.topMargin: -8
-                anchors.bottomMargin: -8
-                radius: 10
-                color: "#2EFFFFFF"
-                border.color: "#40000000"
-                border.width: 1
-                z: 99
-                visible: liveControlBar.visible
-            }
+            // ⭐ 2026-08-18 还原 Aifs 悬停叠加式（推翻 8-16 的常驻独立底条），且不要黑色底条背景：
+            //   按钮直接透明悬浮在画面底部，鼠标在实时流范围内（livePanel.isHovering）才淡入，
+            //   移出范围淡出隐藏；按钮自身 #292929/#FAFAFA/圆角8 的皮肤保留。
             Row {
                 id: liveControlBar
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
-                anchors.leftMargin: 22    // 10(原边距) + 12(面板横向内边距)
-                anchors.bottomMargin: 18  // 10(原边距) + 8(面板纵向内边距)
-                spacing: 8
+                anchors.margins: 10
+                spacing: 10
                 z: 100  // 确保在覆盖层之上
-                visible: !CameraCapsStore.isOtg
+                visible: livePanel.isHovering && !CameraCapsStore.isOtg
+                opacity: livePanel.isHovering ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
                 // onVisibleChanged: console.log("🎮 liveControlBar visible:", visible)
                 
                 // 档位切换下拉列表
@@ -3493,8 +3526,8 @@ Rectangle {
                     id: qualityDropdown
                     width: 70
                     height: 32
-                    radius: 4
-                    color: qualityDropdownArea.containsMouse || qualityMenu.visible ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: qualityDropdownArea.containsMouse || qualityMenu.visible ? "#3A3A3A" : "#292929"
                     
                     Row {
                         anchors.centerIn: parent
@@ -3506,13 +3539,13 @@ Rectangle {
                             font.pixelSize: 12
                             font.family: "PingFang HK"
                             font.bold: true
-                            color: qualityDropdownArea.containsMouse || qualityMenu.visible ? "#263238" : "#FFFFFF"
+                            color: "#FAFAFA"
                         }
                         
                         Text {
                             text: "▼"
                             font.pixelSize: 8
-                            color: qualityDropdownArea.containsMouse || qualityMenu.visible ? "#263238" : "#FFFFFF"
+                            color: "#FAFAFA"
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
@@ -3534,9 +3567,9 @@ Rectangle {
                         anchors.bottom: parent.top
                         anchors.bottomMargin: 4
                         anchors.horizontalCenter: parent.horizontalCenter
-                        color: "#E8F5E9"
-                        radius: 4
-                        border.color: "#A5D6A7"
+                        color: "#292929"
+                        radius: 8
+                        border.color: "#3A3A3A"
                         border.width: 1
                         
                         Column {
@@ -3562,7 +3595,7 @@ Rectangle {
                                     width: qualityMenu.width - 8
                                     height: 28
                                     radius: 3
-                                    color: !accessible ? "#ECEFF1" : (qualityItemArea.containsMouse ? "#C8E6C9" : (isActive ? "#A5D6A7" : "transparent"))
+                                    color: !accessible ? "transparent" : (qualityItemArea.containsMouse ? "#3A3A3A" : (isActive ? "#4A4A4A" : "transparent"))
 
                                     Text {
                                         anchors.centerIn: parent
@@ -3570,7 +3603,7 @@ Rectangle {
                                         font.pixelSize: 12
                                         font.family: "PingFang HK"
                                         font.bold: true
-                                        color: parent.accessible ? "#263238" : "#90A4AE"
+                                        color: parent.accessible ? "#FAFAFA" : "#666666"
                                     }
                                     
                                     MouseArea {
@@ -3612,8 +3645,8 @@ Rectangle {
                     id: focusQuickBtn
                     width: 86
                     height: 32
-                    radius: 4
-                    color: focusQuickArea.containsMouse ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: focusQuickArea.containsMouse ? "#3A3A3A" : "#292929"
 
                     Text {
                         anchors.centerIn: parent
@@ -3622,7 +3655,7 @@ Rectangle {
                         font.pixelSize: 12
                         font.family: "PingFang HK"
                         font.bold: true
-                        color: focusQuickArea.containsMouse ? "#263238" : "#FFFFFF"
+                        color: "#FAFAFA"
                     }
 
                     MouseArea {
@@ -3654,8 +3687,8 @@ Rectangle {
                     id: lensZoomButtonRect
                     width: 50
                     height: 32
-                    radius: 4
-                    color: lensZoomBtnArea.containsMouse ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: lensZoomBtnArea.containsMouse ? "#3A3A3A" : "#292929"
                     
                     Text {
                         id: lensZoomButtonText
@@ -3664,7 +3697,7 @@ Rectangle {
                         font.pixelSize: 12
                         font.family: "PingFang HK"
                         font.bold: true
-                        color: lensZoomBtnArea.containsMouse ? "#263238" : "#FFFFFF"
+                        color: "#FAFAFA"
                     }
                     
                     MouseArea {
@@ -3694,8 +3727,8 @@ Rectangle {
                 Rectangle {
                     width: 36
                     height: 32
-                    radius: 4
-                    color: switchCameraBtn.containsMouse ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: switchCameraBtn.containsMouse ? "#3A3A3A" : "#292929"
                     
                     Text {
                         id: switchCameraText
@@ -3705,7 +3738,7 @@ Rectangle {
                         font.pixelSize: 12
                         font.family: "PingFang HK"
                         font.bold: true
-                        color: switchCameraBtn.containsMouse ? "#263238" : "#FFFFFF"
+                        color: "#FAFAFA"
                     }
                     
                     MouseArea {
@@ -3730,10 +3763,8 @@ Rectangle {
                     id: mirrorDropdown
                     width: 50
                     height: 32
-                    radius: 4
-                    color: mirrorDropdownArea.containsMouse || mirrorMenu.visible
-                           ? "#C8E6C9"
-                           : (mainPage.videoMirrorMode !== "none" ? "#4CAF50" : "#80000000")
+                    radius: 8
+                    color: mirrorDropdownArea.containsMouse || mirrorMenu.visible ? "#3A3A3A" : "#292929"
 
                     Row {
                         anchors.centerIn: parent
@@ -3746,7 +3777,7 @@ Rectangle {
                             font.pixelSize: 12
                             font.family: "PingFang HK"
                             font.bold: true
-                            color: mirrorDropdownArea.containsMouse || mirrorMenu.visible ? "#263238" : "#FFFFFF"
+                            color: "#FAFAFA"
                         }
 
                         Text {
@@ -3773,9 +3804,9 @@ Rectangle {
                         anchors.bottom: parent.top
                         anchors.bottomMargin: 4
                         anchors.horizontalCenter: parent.horizontalCenter
-                        color: "#E8F5E9"
-                        radius: 4
-                        border.color: "#A5D6A7"
+                        color: "#292929"
+                        radius: 8
+                        border.color: "#3A3A3A"
                         border.width: 1
 
                         Column {
@@ -3794,8 +3825,8 @@ Rectangle {
                                     width: mirrorMenu.width - 8
                                     height: 28
                                     radius: 3
-                                    color: mirrorItemArea.containsMouse ? "#C8E6C9"
-                                         : (mainPage.videoMirrorMode === modelData.mode ? "#A5D6A7" : "transparent")
+                                    color: mirrorItemArea.containsMouse ? "#3A3A3A"
+                                         : (mainPage.videoMirrorMode === modelData.mode ? "#4A4A4A" : "transparent")
 
                                     Text {
                                         anchors.centerIn: parent
@@ -3803,7 +3834,7 @@ Rectangle {
                                         font.pixelSize: 12
                                         font.family: "PingFang HK"
                                         font.bold: true
-                                        color: "#263238"
+                                        color: "#FAFAFA"
                                     }
 
                                     MouseArea {
@@ -3830,8 +3861,8 @@ Rectangle {
                 Rectangle {
                     width: 50
                     height: 32
-                    radius: 4
-                    color: zoomResetBtn.containsMouse ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: zoomResetBtn.containsMouse ? "#3A3A3A" : "#292929"
                     visible: mainPage.videoZoom > 1.0
                     
                     Text {
@@ -3840,7 +3871,7 @@ Rectangle {
                         font.pixelSize: 12
                         font.family: "PingFang HK"
                         font.bold: true
-                        color: zoomResetBtn.containsMouse ? "#263238" : "#FFFFFF"
+                        color: "#FAFAFA"
                     }
                     
                     MouseArea {
@@ -3862,8 +3893,8 @@ Rectangle {
                 Rectangle {
                     width: 36
                     height: 32
-                    radius: 4
-                    color: rotateBtn.containsMouse ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: rotateBtn.containsMouse ? "#3A3A3A" : "#292929"
                     
                     Text {
                         anchors.centerIn: parent
@@ -3871,7 +3902,7 @@ Rectangle {
                         font.pixelSize: 12
                         font.family: "PingFang HK"
                         font.bold: true
-                        color: rotateBtn.containsMouse ? "#263238" : "#FFFFFF"
+                        color: "#FAFAFA"
                     }
                     
                     MouseArea {
@@ -3897,8 +3928,8 @@ Rectangle {
                     id: sleepWorkDropdown
                     width: 62
                     height: 32
-                    radius: 4
-                    color: sleepWorkArea.containsMouse || sleepWorkMenu.visible ? "#C8E6C9" : "#80000000"
+                    radius: 8
+                    color: sleepWorkArea.containsMouse || sleepWorkMenu.visible ? "#3A3A3A" : "#292929"
 
                     Row {
                         anchors.centerIn: parent
@@ -3909,7 +3940,7 @@ Rectangle {
                             font.pixelSize: 12
                             font.family: "PingFang HK"
                             font.bold: true
-                            color: sleepWorkArea.containsMouse || sleepWorkMenu.visible ? "#263238" : "#FFFFFF"
+                            color: "#FAFAFA"
                         }
                         Text {
                             text: "▼"
@@ -3935,9 +3966,9 @@ Rectangle {
                         anchors.bottom: parent.top
                         anchors.bottomMargin: 4
                         anchors.horizontalCenter: parent.horizontalCenter
-                        color: "#E8F5E9"
-                        radius: 4
-                        border.color: "#A5D6A7"
+                        color: "#292929"
+                        radius: 8
+                        border.color: "#3A3A3A"
                         border.width: 1
 
                         Column {
@@ -3954,14 +3985,14 @@ Rectangle {
                                     width: sleepWorkMenu.width - 8
                                     height: 28
                                     radius: 3
-                                    color: swItemArea.containsMouse ? "#C8E6C9" : "transparent"
+                                    color: swItemArea.containsMouse ? "#3A3A3A" : "transparent"
                                     Text {
                                         anchors.centerIn: parent
                                         text: modelData.label
                                         font.pixelSize: 12
                                         font.family: "PingFang HK"
                                         font.bold: true
-                                        color: "#263238"
+                                        color: "#FAFAFA"
                                     }
                                     MouseArea {
                                         id: swItemArea
@@ -3996,28 +4027,17 @@ Rectangle {
             // ⭐ 第五十章：OTG 版底部按钮栏（独立文件 OtgLiveControlBar.qml）。
             //   设备侧的三个按钮（分辨率档位/推送帧率/码率/变焦）全走 otg_ 独立通道；
             //   右半边镜像/缩放/旋转/睡眠/工作与镜头无关，只发信号复用下面既有实现。
-            // ⭐ 2026-08-16 需求：同上，OTG 版底栏也去掉悬停浮窗，常驻 + 老 java 面板底色
-            Rectangle {
-                anchors.fill: otgControlBar
-                anchors.leftMargin: -12
-                anchors.rightMargin: -12
-                anchors.topMargin: -8
-                anchors.bottomMargin: -8
-                radius: 10
-                color: "#2EFFFFFF"
-                border.color: "#40000000"
-                border.width: 1
-                z: 99
-                visible: otgControlBar.visible
-            }
+            // ⭐ 2026-08-18：OTG 排同样透明悬浮在画面底部（无底条背景），悬停显隐
             OtgLiveControlBar {
                 id: otgControlBar
                 anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                anchors.leftMargin: 22
-                anchors.bottomMargin: 18
+                anchors.margins: 10
                 z: 100
-                visible: CameraCapsStore.isOtg
+                visible: livePanel.isHovering && CameraCapsStore.isOtg
+                opacity: livePanel.isHovering ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
 
                 mirrorMode: mainPage.videoMirrorMode
                 localZoom: mainPage.videoZoom
@@ -4098,12 +4118,17 @@ Rectangle {
             color: mainPage.panelBgColor  // 面板背景色（滑块可调）
             radius: 4
             clip: true
+            // ⭐ 2026-08-18 需求：慢放区加边框（与弹框同族的 #3A3A3A 描边，视频区内缩 2px 不压边）
+            border.color: "#3A3A3A"
+            border.width: 1
 
                     // 慢放视频容器（用于旋转，与实时流一致）
                     Item {
                         id: slowmoVideoContainer
                         anchors.fill: parent
                         anchors.margins: 2
+                        // ⭐ 2026-08-16：慢放底栏与实时流一致改为独立一条（44px），画面区让位不叠加
+                        anchors.bottomMargin: 46
                         clip: true
                         onWidthChanged: mainPage.clampSlowmoOffsets()
                         onHeightChanged: mainPage.clampSlowmoOffsets()
@@ -4290,15 +4315,20 @@ Rectangle {
                 }
             }
 
-            // 慢放进度条（贴在慢放view底部，跟随窗口切换）
+            // 慢放进度条
+            // ⭐ 2026-08-16 需求二改：与实时流底栏一致，改为独立常驻一条（不叠加在画面上），
+            //   整条 #1F1F1F 对齐老 java gstream 底栏底色；无内容时控件照常显示（0/0）
             Rectangle {
                 id: slowmoProgressBar
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
+                // ⭐ 2026-08-18：三边留 1px，别盖住 slowmoPanel 新加的边框
+                anchors.leftMargin: 1
+                anchors.rightMargin: 1
+                anchors.bottomMargin: 1
                 height: 44
-                color: "#80000000"
-                visible: slowMotionPlayer.hasContent
+                color: "#1F1F1F"
 
                 RowLayout {
                     anchors.fill: parent
@@ -4374,7 +4404,7 @@ Rectangle {
                             width: parent.width
                             height: 4
                             radius: 999
-                            color: "#C8E6C9"
+                            color: "#4A4A4A"  // ⭐ 深色轨道，对齐老 java 深色主题
                         }
 
                         Rectangle {
@@ -4382,7 +4412,7 @@ Rectangle {
                             width: 16
                             height: 16
                             radius: 8
-                            color: "#A5D6A7"
+                            color: "#FAFAFA"  // ⭐ 浅色滑块，深色轨道上清晰可见
                             x: slowMotionPlayer.recordedFrames > 1 ?
                                slowMotionPlayer.currentFrame / (slowMotionPlayer.recordedFrames - 1) * (parent.width - 16) : 0
                             anchors.verticalCenter: parent.verticalCenter
@@ -5392,6 +5422,9 @@ Rectangle {
         }
         stopAll()
         clearVideoSurface()
+        // §88：截图/慢放帧库随「观看会话」清场——只在这里清（切设备/切账号/退登录）。
+        //   管线内部重建（看门狗自愈/心跳清屏重连）不再清帧库，断流重连后旧截图不再变假图。
+        gstPlayer.resetCaptureSession()
         publishState = 0
         isConnecting = false
         currentStream = ""
@@ -5400,6 +5433,7 @@ Rectangle {
         pairedIosDisplay = ""   // 切设备/退登录清昵称，新登录时重设，避免残留上一台
         playRecoverStreak = 0   // §54：主动清场 = 会话结束，自愈退避从头算
         lastPlayAttemptMs = 0
+        noFrameSinceMs = 0      // §86：无画面计时随会话清零，防拿上一台设备的时刻判新设备
         p2pSingleModeOccupied = false   // ⭐ 2026-08-01：切设备/退登录，单人占用作废
         resetDeviceReportedStats()
         liveInfoFps.text = "FPS: --"
@@ -5426,9 +5460,16 @@ Rectangle {
     //   一次性快速路径（publishState 0→1、mode/codec/streamKey 变化）全部保留，对账只兜异常。
     property double lastPlayAttemptMs: 0   // 最近一次发起拉流的时刻（playP2P/playWebRTC 入口更新）
     property int playRecoverStreak: 0      // 连续自愈重建次数（出画面即清零），驱动退避
+    // ⭐ §86（2026-08-21）：fps 首次归零的时刻（0=当前有画面）。「无画面持续多久」必须从这里起算——
+    //   旧代码拿 lastPlayAttemptMs（上次发起拉流的时刻）当基准：正常播 276s 后 fps 归零 1 秒，
+    //   276s ≥ 8s 立刻成立 → 网络小抖动秒触发 stopAll+整会话重建（黑屏 5~7s），
+    //   比不重建（NACK/PLI 1~2s 无感恢复）体验差得多。8.3.7 稳定是因为 §65 之前
+    //   receiveFps 断流后冻结非零、本对账从不触发；§65 让 fps 如实归零后此 bug 被激活。
+    property double noFrameSinceMs: 0
 
     function reconcilePlayback(fps) {
         if (fps > 0) {
+            noFrameSinceMs = 0
             if (playRecoverStreak !== 0) {
                 console.log("✅ [自愈对账] 画面已恢复（自愈重建 " + playRecoverStreak + " 次后出画）")
                 playRecoverStreak = 0
@@ -5440,13 +5481,19 @@ Rectangle {
         if (deviceStatus !== "") return     // 睡眠/唤醒过渡态不介入
         if (p2pSingleModeOccupied) return   // ⭐ 2026-08-01：被单人模式拒绝，不自动重连（否则反复被拒卡死）
         var now = Date.now()
+        if (noFrameSinceMs <= 0) { noFrameSinceMs = now; return }
         if (lastPlayAttemptMs <= 0) { lastPlayAttemptMs = now; return }
-        // 退避：首次 8s（信令层常驻循环没在 8s 内连上 = 循环卡死，整会话换 epoch 重建），
+        // ⭐ §86：无画面须**持续 5s** 才考虑重建——1~3s 的网络抖动交给 RTP 层 NACK/PLI 自愈，
+        //   重建反而把 1 秒的卡顿放大成 5~7 秒黑屏（bug1/bug2 实测每 30~90s 重建一次的元凶）。
+        var stallMs = now - noFrameSinceMs
+        if (stallMs < 5000) return
+        // 退避：距上次发起拉流至少 8s（信令层常驻循环没在 8s 内连上 = 循环卡死，换 epoch 重建），
         // 之后逐次 +4s，封顶 30s——防重建风暴，同时保证异常也能自动收敛。
         var waitMs = Math.min(8000 + playRecoverStreak * 4000, 30000)
         if (now - lastPlayAttemptMs < waitMs) return
         playRecoverStreak++
-        console.log("🔁 [自愈对账] 设备在推流但 " + Math.round((now - lastPlayAttemptMs) / 1000)
+        noFrameSinceMs = 0                  // 重建后无画面时长从头计
+        console.log("🔁 [自愈对账] 设备在推流但已持续 " + Math.round(stallMs / 1000)
                     + "s 无画面 → 第 " + playRecoverStreak + " 次整会话重建（mode="
                     + (connectMode === 1 ? "P2P" : "SRS") + " stream=" + currentStream + "）")
         stopAll()
@@ -5997,7 +6044,8 @@ Rectangle {
                 spacing: 2
 
                 Text {
-                    text: "感光度(ISO) 越高感光越强、暗光下更亮但噪点增多；越低画面更干净但依赖光线充足"
+                    // ⭐ 2026-08-18 需求二改：叫「曝光」（避免与颜色精调里的「亮度」混淆），说明文字不提 ISO
+                    text: "曝光越高画面越亮，暗光下更清楚但噪点会增多；越低画面越干净"
                     font.family: "PingFang HK"
                     font.pixelSize: 13
                     color: "#6FD1FF"
@@ -6009,8 +6057,9 @@ Rectangle {
                 spacing: 10
                 
                 Text {
-                    // ⭐ 2026-08-15 需求：ISO 显示为中文名称
-                    text: "感光度"
+                    // ⭐ 2026-08-18 需求二改：叫「曝光」（内部仍是 ISO 增益逻辑，仅显示名；
+                    //   颜色精调里另有「亮度」滑条，避免重名混淆）
+                    text: "曝光"
                     font.family: "PingFang HK"
                     font.pixelSize: 16
                     color: "#ECEFF4"
@@ -7662,10 +7711,12 @@ Rectangle {
     }
     
     // ============ 快捷键说明 Popup ============
+    // ⭐ 2026-08-18 需求：样式对齐切换账号弹框（#1F1F1F 底、圆角25、左对齐18号粗标题、
+    //   右上 ✕ 圆形关闭钮、标题下 1px #3A3A3A 分隔线）；拖动功能保留（标题栏拖动）
     Popup {
         id: shortcutHelpPopup
         width: 500
-        height: 530  // 2026-08-14：条目精简后收窄，后按需求再加高 50
+        height: 500
         modal: false  // 去掉灰蒙蒙的背景遮罩
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         anchors.centerIn: parent
@@ -7674,10 +7725,9 @@ Rectangle {
         property point dragStart: Qt.point(0, 0)
         property bool dragging: false
         
-        // ⭐ 2026-08-14 弹框配色对齐 java gstream 深色主题
         background: Rectangle {
-            color: "#292929"
-            radius: 8
+            color: "#1F1F1F"
+            radius: 25
             border.color: "#3A3A3A"
             border.width: 1
         }
@@ -7687,7 +7737,7 @@ Rectangle {
             anchors.fill: parent
             anchors.margins: 24
             
-            // 拖动区域（标题栏）
+            // 标题栏（可拖动，样式对齐切换账号弹框 header）
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 40
@@ -7725,12 +7775,38 @@ Rectangle {
                 }
                 
                 Text {
-                    anchors.centerIn: parent
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
                     text: "快捷键说明"
                     font.family: "PingFang HK"
                     font.pixelSize: 18
                     font.bold: true
                     color: "#FAFAFA"
+                }
+                
+                // 关闭按钮（✕，同切换账号弹框）
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: shortcutCloseArea.containsMouse ? "#374151" : "transparent"
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✕"
+                        font.pixelSize: 14
+                        color: "#FAFAFA"
+                    }
+                    
+                    MouseArea {
+                        id: shortcutCloseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: shortcutHelpPopup.close()
+                    }
                 }
             }
             
@@ -7773,23 +7849,7 @@ Rectangle {
                 ShortcutItem { key: "Esc"; desc: "退出全屏/关闭弹框" }
             }
             
-            // 关闭按钮
-            Rectangle {
-                Layout.alignment: Qt.AlignHCenter
-                width: 80; height: 32; radius: 8
-                color: closeShortcutArea.containsMouse ? "#3A3A3A" : "#1F1F1F"
-                border.color: "#3A3A3A"
-                
-                Text { anchors.centerIn: parent; text: "关闭"; font.pixelSize: 14; color: "#FAFAFA" }
-                
-                MouseArea {
-                    id: closeShortcutArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: shortcutHelpPopup.close()
-                }
-            }
+            // ⭐ 2026-08-18：底部「关闭」按钮移除，改为标题栏右上 ✕（对齐切换账号弹框）
         }
     }
     
@@ -7825,7 +7885,8 @@ Rectangle {
         
         Rectangle {
             width: 60; height: 28; radius: 4
-            color: "#1F1F1F"
+            // ⭐ 2026-08-18：弹框底换成 #1F1F1F 后，键帽改 #292929 保持对比
+            color: "#292929"
             border.color: "#3A3A3A"
             Text {
                 anchors.centerIn: parent
@@ -8526,6 +8587,15 @@ Rectangle {
     Component.onCompleted: {
         console.log("📦 MainPage.qml: Component.onCompleted 开始")
         console.log("MainPage loaded, currentStream=" + currentStream)
+        // ⭐ 2026-08-18 [圆角诊断]：主页就绪时的圆角/窗口关键状态（直写 corner_diag.txt）
+        captureManager.cornerDiag("MainPage 就绪: radius=" + mainPage.radius
+            + " windowCornerRadius=" + mainPage.windowCornerRadius
+            + " gWindowAlphaOk=" + (typeof gWindowAlphaOk !== "undefined" ? gWindowAlphaOk : "undefined")
+            + " Window.visibility=" + Window.visibility
+            + " 窗口色=" + (Window.window ? Window.window.color : "?")
+            + " 窗口尺寸=" + (Window.window ? (Window.window.width + "x" + Window.window.height) : "?")
+            + " 顶栏topLeftR=" + topMenuBar.topLeftRadius
+            + " 底栏bottomLeftR=" + bottomStatusBar.bottomLeftRadius)
         // 不在这里调用 playWebRTC()，等待 CONFIG_STATE 消息
         // playWebRTC() 会在收到 publishStatus=1 时自动调用
         
@@ -8817,6 +8887,30 @@ Rectangle {
         var controlNickname = message.controlNickname || ""
         
         console.log("📩 绑定消息解析: type=" + msgType + ", state=" + state + ", deviceId=" + newDeviceId + ", iosUsername=" + iosUsername)
+
+        // ⭐ PC 单点登录（2026-08-18）：同账号在别的电脑登录时，后端向该账号所有 PC 会话
+        //   广播 PC_KICKED（带最新在线的 pcDeviceId）。比对自己的 pcDeviceId：
+        //   是自己 → 忽略（自己就是最新登录）；不是自己 → 被挤掉，断流+断WS+直接回登录页。
+        if (msgType === "PC_KICKED") {
+            var latestPcId = message.pcDeviceId || ""
+            var myPcId = HttpClient.pcDeviceId()
+            if (latestPcId && latestPcId === myPcId) {
+                console.log("👤 [单点登录] 收到 PC_KICKED，最新登录就是本机，忽略")
+                return
+            }
+            console.log("🚪 [单点登录] 账号在其他电脑登录，本机被挤下线: my=" + myPcId + " latest=" + latestPcId)
+            // 与 ACCOUNT_UPDATEPASSWORD 同款清理链
+            resetStreamStateForSwitch("账号在其他电脑登录，被挤下线")
+            gstPlayer.clearJpegFiles()
+            captureManager.clearAll()
+            WebSocketClient.disconnectFromServer()
+            HttpClient.logout()
+            // ⭐ 2026-08-22：toast 随主页一起销毁根本看不到——改为存到窗口级属性，
+            //   登录页加载完弹提示框告知被挤原因（见 Main.qml loginLoader.onLoaded）
+            mainWindow.logoutNotice = "该账号已在另一台电脑登录，您已被退出。\n如非本人操作，请尽快修改密码。"
+            logoutRequested()
+            return
+        }
 
         // ⭐ 需求#12（2026-07-31）：设备上/下线推送（后端在 Redis 在线状态**跳变**时，
         //   向绑定该设备的 PC 账号推一条 DEVICE_PRESENCE，走本绑定专属通道，与拉流/信令完全隔离）。
@@ -10785,7 +10879,9 @@ Rectangle {
         }
         
         // 操作提示（底部，透明度与抓拍item一致；⭐ 2026-07-16 上移，给下面新增的进度条让位）
+        // ⭐ 2026-08-18 需求：A 键放大后不再显示底部操作说明（代码保留，快捷键功能不受影响）
         Rectangle {
+            visible: false
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: fullscreenProgressBar.top
             anchors.bottomMargin: 10
@@ -12226,8 +12322,8 @@ Rectangle {
                             if (modelData.remark) {
                                 baseName = baseName + " (" + modelData.remark + ")"
                             }
-                            // ⭐ 设备后面标注平台（iOS / Android）——按 deviceId 的 android 前缀判断
-                            return baseName + " · " + HttpClient.deviceTypeLabel(modelData.deviceId || "")
+                            // ⭐ 2026-08-18 需求：去掉「· iOS」平台标注（本产品全是 iOS 设备，属于噪音）
+                            return baseName
                         }
                         
                         RowLayout {
@@ -12316,7 +12412,13 @@ Rectangle {
                                 }
                             }
                             
-                            // ⭐ 移除在线状态文字（已有绿灯指示）
+                            // ⭐ 2026-08-18 需求：在线/离线文字放在备注按钮左边
+                            Text {
+                                text: modelData.online ? "在线" : "离线"
+                                font.family: "PingFang HK"
+                                font.pixelSize: 11
+                                color: modelData.online ? "#34C759" : "#8E8E93"
+                            }
                             
                             // 备注按钮
                             Rectangle {
