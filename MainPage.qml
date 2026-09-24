@@ -219,6 +219,9 @@ Rectangle {
         //   iOS 收到 ptype=lowPowerCapture 后自行判断落地。默认 false=高功率（与现网行为一致）。
         //   Android 暂不处理该 ptype（Android 已是固定30fps采集，本开关对 Android 无意义）。
         property bool iosLowPowerCapture: false
+        // ⭐ 2026-09-24：相机设定「亮度」改为 PC 本地处理（GStreamer gamma+videobalance / 网页内核 CSS），
+        //   不再下发设备端滤镜（设备端响应慢），拖动即时生效。0..100，50=原画。
+        property int pcBrightness: 50
     }
 
     // ⭐ 主播放内核是否为「网页内核(Chromium WebEngine)」。
@@ -3343,6 +3346,8 @@ Rectangle {
                                 mainPage.kernelStartByMode()
                                 // 同步当前本地变换
                                 mainPage.kernelSyncTransform()
+                                // 网页内核加载完成后套上当前本地滤镜 + PC 本地亮度
+                                mainPage.refreshFilterRouting()
                                 // ⭐ 补一次统计面板 hover 状态同步（防止加载完成时鼠标已经在面板内）
                                 if (item.setStatsHover) item.setStatsHover(livePanel.isHovering)
                             }
@@ -5206,17 +5211,18 @@ Rectangle {
         if (useWebEngineKernel) {
             // CSS filter 乘数：brightness 由 videobalance 加性[-1,1] 折算成乘数 1+b；对比/饱和直接用乘数
             var view = kernelPlayerLoader.item
-            if (view && view.applyColorFilter) view.applyColorFilter(1.0 + b, c, s)
+            if (view && view.applyColorFilter) view.applyColorFilter((1.0 + b) * pcBrightnessCssMul(), c, s)
         } else {
             gstPlayer.applyColorFilter(b, c, s, g)
         }
     }
 
     // 本地滤镜复位中性（滤镜关 / 切到 iOS 设备时，避免上一次 Android 的 videobalance/CSS 残留）
+    //   PC 本地亮度（appSettings.pcBrightness）不属于设备滤镜，复位时保留
     function clearLocalColorFilter() {
         if (useWebEngineKernel) {
             var view = kernelPlayerLoader.item
-            if (view && view.applyColorFilter) view.applyColorFilter(1.0, 1.0, 1.0)
+            if (view && view.applyColorFilter) view.applyColorFilter(pcBrightnessCssMul(), 1.0, 1.0)
         } else {
             gstPlayer.clearColorFilter()
         }
@@ -5224,8 +5230,24 @@ Rectangle {
 
     // 登录/切设备/切内核后刷新滤镜落点：Android→本地落地当前值；iOS→PC 本地保持中性（滤镜在设备端做）
     function refreshFilterRouting() {
+        if (!useWebEngineKernel) gstPlayer.setLocalBrightness(pcBrightnessLevel())
         if (HttpClient.currentIsAndroid()) applyLocalColorFilter()
         else clearLocalColorFilter()
+    }
+
+    // ============ PC 本地亮度（相机设定「亮度」滑条，iOS / Android 通用，不下发设备）============
+    // 0..100（50=原画）→ level -1..1
+    function pcBrightnessLevel() {
+        return Math.max(-1.0, Math.min(1.0, (appSettings.pcBrightness - 50) / 50.0))
+    }
+    // 网页内核 CSS brightness 乘数：level ±1 → 0.5 .. 1.5
+    function pcBrightnessCssMul() {
+        return 1.0 + pcBrightnessLevel() * 0.5
+    }
+    function setPcBrightness(v) {
+        appSettings.pcBrightness = Math.max(0, Math.min(100, Math.round(v)))
+        if (useWebEngineKernel) refreshFilterRouting()   // CSS 乘数要和 Android 滤镜值一起重写
+        else gstPlayer.setLocalBrightness(pcBrightnessLevel())
     }
 
     // ⭐ 滚轮聚焦缩放（GStreamer 与网页内核共用同一套数学）。
@@ -5890,6 +5912,10 @@ Rectangle {
                                     iosCameraSettingsPopup.clarityValue = 50
                                     claritySlider.value = 50
 
+                                    // PC 本地亮度：50（原画）
+                                    mainPage.setPcBrightness(50)
+                                    tuneBrightnessSlider.value = 50
+
                                     // 快门：还原到后台配置的默认值（按平台，未配置=120）
                                     var flickerDefault = shutterCfg["default"]
                                     iosCameraSettingsPopup.flickerValue = flickerDefault
@@ -6491,7 +6517,8 @@ Rectangle {
                             onClicked: {
                                 // ⭐ 关滤镜=回原图（真还原），参数重置为默认值供下次起步
                                 iosCameraSettingsPopup.resetColorTune()
-                                tuneBrightnessSlider.value = iosFilterPopup.fBrightness
+                                mainPage.setPcBrightness(50)
+                                tuneBrightnessSlider.value = 50
                                 tuneSaturationSlider.value = iosFilterPopup.fSaturation
                                 tuneContrastSlider.value   = iosFilterPopup.fContrast
                                 tuneChromaSlider.value     = iosFilterPopup.fChroma
@@ -6517,12 +6544,12 @@ Rectangle {
                     Slider {
                         id: tuneBrightnessSlider
                         Layout.fillWidth: true
-                        from: iosFilterPopup.brightnessFrom
-                        to: iosFilterPopup.brightnessTo
-                        stepSize: iosFilterPopup.brightnessStep
-                        value: iosFilterPopup.fBrightness
-                        onMoved: iosFilterPopup.fBrightness = value
-                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("brightness", iosFilterPopup.fBrightness)
+                        // ⭐ 2026-09-24：改为 PC 本地亮度（不下发设备），拖动过程中每一步即时生效
+                        from: 0
+                        to: 100
+                        stepSize: 1
+                        value: appSettings.pcBrightness
+                        onMoved: mainPage.setPcBrightness(value)
 
                         background: Rectangle {
                             x: tuneBrightnessSlider.leftPadding
@@ -6557,11 +6584,10 @@ Rectangle {
                             anchors.fill: parent
                             acceptedButtons: Qt.NoButton
                             onWheel: function(wheel) {
-                                var delta = wheel.angleDelta.y > 0 ? tuneBrightnessSlider.stepSize : -tuneBrightnessSlider.stepSize
+                                var delta = wheel.angleDelta.y > 0 ? 2 : -2
                                 var newValue = Math.max(tuneBrightnessSlider.from, Math.min(tuneBrightnessSlider.to, tuneBrightnessSlider.value + delta))
                                 tuneBrightnessSlider.value = newValue
-                                iosFilterPopup.fBrightness = newValue
-                                iosCameraSettingsPopup.pushColorParam("brightness", newValue)
+                                mainPage.setPcBrightness(newValue)
                             }
                         }
                     }

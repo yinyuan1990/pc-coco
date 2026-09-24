@@ -1077,6 +1077,8 @@ bool GstPlayer::createPipeline()
     //   videobalance / gamma 元素仍在管线中, 但走 GStreamer 默认中性值
     //   (brightness=0, contrast=1.0, saturation=1.0, hue=0, gamma=1.0) → 不做任何颜色处理
     qDebug() << "⚪ [Filter] PC 后期色彩调整已禁用 (videobalance/gamma 走中性默认值)";
+    // 管线重建后元素是新建的，把 PC 本地亮度（及 Android 滤镜的亮度/伽马）重新套上
+    applyEffectiveBrightness();
     /*
     // 初始化默认值（与 CaptureManager 保持一致）
     g_object_set(m_videoBalance,
@@ -3266,21 +3268,41 @@ void GstPlayer::applyColorFilter(double brightness, double contrast, double satu
     // Android 本地滤镜落地：videobalance(亮度/对比度/饱和度) + gamma。
     //   与被禁用的 setAllImageParams（"对比 iOS 原画"开关）互不影响——这是独立的 Android 滤镜链路。
     //   仅 g_object_set 属性（轻量）；实际像素处理在 GStreamer 管线线程，不卡 Qt 主线程。
-    setBrightness(brightness);
+    m_filterBrightness = brightness;
+    if (gamma > 0.0) m_filterGamma = gamma;
     setContrast(contrast);
     setSaturation(saturation);
-    if (gamma > 0.0) setGamma(gamma);
+    applyEffectiveBrightness();
     qDebug() << "🎨 [Android本地滤镜] videobalance b=" << brightness
              << "c=" << contrast << "s=" << saturation << "gamma=" << gamma;
 }
 
 void GstPlayer::clearColorFilter()
 {
-    setBrightness(0.0);
+    m_filterBrightness = 0.0;
+    m_filterGamma = 1.0;
     setContrast(1.0);
     setSaturation(1.0);
-    setGamma(1.0);
-    qDebug() << "🎨 [Android本地滤镜] videobalance 复位中性";
+    applyEffectiveBrightness();
+    qDebug() << "🎨 [Android本地滤镜] videobalance 复位中性（PC 本地亮度保留:" << m_localBrightness << "）";
+}
+
+void GstPlayer::setLocalBrightness(double level)
+{
+    m_localBrightness = qBound(-1.0, level, 1.0);
+    applyEffectiveBrightness();
+}
+
+void GstPlayer::applyEffectiveBrightness()
+{
+    // 本地亮度主要走 gamma（out = in^(1/gamma)，黑白两端不动只抬/压中间调，黑底不会发灰），
+    //   再叠一点加性 brightness 让两端也有可感知变化。level=±1 → gamma ×2 / ×0.5，brightness ±0.12。
+    //   只写属性（g_object_set 轻量），逐帧处理在管线线程，拖动时每次 onMoved 调用也不卡主线程。
+    const double lv = m_localBrightness;
+    const double b = qBound(-1.0, m_filterBrightness + lv * 0.12, 1.0);
+    const double g = qBound(0.01, m_filterGamma * std::pow(2.0, lv), 10.0);
+    if (m_videoBalance) g_object_set(m_videoBalance, "brightness", b, nullptr);
+    if (m_gamma) g_object_set(m_gamma, "gamma", g, nullptr);
 }
 
 void GstPlayer::setConfigFps(double fps)

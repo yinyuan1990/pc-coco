@@ -214,6 +214,10 @@ public:
     //   （此处仅做轻量 g_object_set 属性写入）。gamma<=0 表示保持不变。
     Q_INVOKABLE void applyColorFilter(double brightness, double contrast, double saturation, double gamma);
     Q_INVOKABLE void clearColorFilter();  // 复位中性（b=0, c=1, s=1, gamma=1）
+
+    // PC 本地亮度（相机设定「亮度」滑条，iOS/Android 通用，不下发设备）：level -1..1，0=中性。
+    //   与上面的 Android 滤镜值叠加后写入 videobalance/gamma，管线重建后自动重新套用。
+    Q_INVOKABLE void setLocalBrightness(double level);
     
     // ⭐ 配置fps（PC手动设置时调用，用于延迟计算）
     Q_INVOKABLE void setConfigFps(double fps);
@@ -330,6 +334,10 @@ private:
     GstElement *m_videoScale = nullptr;   // ⭐ videoscale（处理动态分辨率变化，防绿幕）
     GstElement *m_videoBalance = nullptr;  // videobalance（亮度、对比度、饱和度、色调）
     GstElement *m_gamma = nullptr;         // gamma（伽马值）
+    double m_filterBrightness = 0.0;       // applyColorFilter 设的亮度（Android 本地滤镜）
+    double m_filterGamma = 1.0;            // applyColorFilter 设的伽马
+    double m_localBrightness = 0.0;        // setLocalBrightness 设的 PC 本地亮度 -1..1
+    void applyEffectiveBrightness();       // 合成 filter + local 后写 videobalance.brightness / gamma.gamma
     GstElement *m_convert = nullptr;     // videoconvert
     GstElement *m_appsink = nullptr;
     
