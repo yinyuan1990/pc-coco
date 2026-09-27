@@ -14042,13 +14042,16 @@ Rectangle {
         //   滑块值直接 = 发给 iOS 的值 (无派生公式)
         //   曝光: PC 端展示线性倍数, 发给 iOS 时 Math.log2() 转 EV stops
         //   红色增强: 锁死, 无滑块
-        property double fBrightness: 1.10
-        property double fGamma:      1.10
-        property double fContrast:   1.10
-        property double fSaturation: 1.10
-        property double fExposure:   1.10
-        property double fRedBoost:   0.02
-        property double fBlackPoint: 0.10   // ⭐ 默认 0.10 压死 limited-range 伪黑 (黑色不再灰)
+        // ⭐ 2026-09-27：coco 后台没有 ios-filter-defaults 接口（404），客户端一直用这里的兜底值。
+        //   原兜底值照搬别的版本（亮度 1.10、范围 0.8~2.0），按 coco iOS 语义（亮度 0=原画、±1 中调曲线）
+        //   是「一碰就猛提亮、最左也比原画亮」。改为全部中性 = 原画，滑条中点就是原画。
+        property double fBrightness: 0.0
+        property double fGamma:      1.0
+        property double fContrast:   1.0
+        property double fSaturation: 1.0
+        property double fExposure:   1.0
+        property double fRedBoost:   0.0
+        property double fBlackPoint: 0.0
         property bool   fEnabled:    false
 
         // ⭐ 玉麒麟 LUT（5 张 png，STOMP ptype=lutName + test_mode 开关）
@@ -14073,13 +14076,14 @@ Rectangle {
         ]
 
         // ⭐ 上下限 / 步进 / 出厂默认 — 跟默认值一样从后台动态拉取 (硬编码仅作 server fetch 失败时的 fallback)
-        property double brightnessFrom: 0.8;   property double brightnessTo: 2.0;   property double brightnessStep: 0.02; property double brightnessDefault: 1.10
-        property double gammaFrom:      0.8;   property double gammaTo:      2.0;   property double gammaStep:      0.01; property double gammaDefault:      1.10
-        property double contrastFrom:   0.8;   property double contrastTo:   1.30;  property double contrastStep:   0.02; property double contrastDefault:   1.10
-        property double saturationFrom: 0.0;   property double saturationTo: 2.0;   property double saturationStep: 0.02; property double saturationDefault: 1.10
-        property double exposureFrom:   0.6;   property double exposureTo:   1.6;   property double exposureStep:   0.02; property double exposureDefault:   1.10
-        property double redBoostDefault: 0.02
-        property double blackPointDefault: 0.10   // ⭐ 后台可调; 压 H.264 limited-range 伪黑
+        // 中点 = 原画：亮度 iOS 公式 y + b·y·(1-y)，±0.5 ≈ 中间灰 ±0.125；伽马 pow(y, 1/g)；对比度绕 0.5 拉
+        property double brightnessFrom: -0.5;  property double brightnessTo: 0.5;   property double brightnessStep: 0.01; property double brightnessDefault: 0.0
+        property double gammaFrom:      0.5;   property double gammaTo:      1.5;   property double gammaStep:      0.01; property double gammaDefault:      1.0
+        property double contrastFrom:   0.5;   property double contrastTo:   1.5;   property double contrastStep:   0.01; property double contrastDefault:   1.0
+        property double saturationFrom: 0.0;   property double saturationTo: 2.0;   property double saturationStep: 0.02; property double saturationDefault: 1.0
+        property double exposureFrom:   0.6;   property double exposureTo:   1.6;   property double exposureStep:   0.02; property double exposureDefault:   1.0
+        property double redBoostDefault: 0.0
+        property double blackPointDefault: 0.0    // 原 0.10（压伪黑，会让画面一开滤镜就变暗），改中性
         // ⭐ 玉麒麟扩展参数
         property double sharpnessFrom: 0;   property double sharpnessTo: 1.0;  property double sharpnessStep: 0.05; property double sharpnessDefault: 0.20
         property double highlightLiftFrom: 0; property double highlightLiftTo: 1.0; property double highlightLiftStep: 0.02; property double highlightLiftDefault: 0.0
@@ -14308,11 +14312,11 @@ Rectangle {
         }
 
         // 内部 prev 值 — 用于计算每次 onMoved 的 delta (slider 的 value 已经是新值)
-        property double prevBrightness: 1.10
-        property double prevGamma:      1.10
-        property double prevContrast:   1.10
-        property double prevSaturation: 1.10
-        property double prevExposure:   1.10
+        property double prevBrightness: 0.0
+        property double prevGamma:      1.0
+        property double prevContrast:   1.0
+        property double prevSaturation: 1.0
+        property double prevExposure:   1.0
 
         // ⭐ 联动 helper
         function clampVal(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
