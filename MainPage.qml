@@ -5771,6 +5771,69 @@ Rectangle {
             iosFilterPopup.pushParam(ptype, val)
         }
 
+        // ⭐ 2026-09-27 颜色参数精调拖动中节流下发：首次立即发，之后每 100ms 最多发一次最新值，
+        //   停手后补发最后一次（trailing）。原来只在松手时发，拖动过程画面不动，客户感觉不灵敏。
+        property string pendingColorPtype: ""
+        property var pendingColorVal: null
+        function queueColorParam(ptype, val) {
+            if (pendingColorPtype !== "" && pendingColorPtype !== ptype) {
+                pushColorParam(pendingColorPtype, pendingColorVal)
+                pendingColorPtype = ""
+            }
+            if (!colorPushThrottle.running) {
+                pushColorParam(ptype, val)
+                colorPushThrottle.start()
+            } else {
+                pendingColorPtype = ptype
+                pendingColorVal = val
+            }
+        }
+        // 松手：丢弃同参数的待发值，直接发最终值
+        function flushColorParam(ptype, val) {
+            if (pendingColorPtype === ptype) pendingColorPtype = ""
+            pushColorParam(ptype, val)
+        }
+        Timer {
+            id: colorPushThrottle
+            interval: 100
+            repeat: false
+            onTriggered: {
+                if (iosCameraSettingsPopup.pendingColorPtype === "") return
+                var p = iosCameraSettingsPopup.pendingColorPtype
+                var v = iosCameraSettingsPopup.pendingColorVal
+                iosCameraSettingsPopup.pendingColorPtype = ""
+                iosCameraSettingsPopup.pushColorParam(p, v)
+                start()
+            }
+        }
+
+        // ⭐ 2026-09-27 曝光（硬件 ISO，test_brightness）拖动中同样节流下发，原来也是松手才发
+        property int pendingExposure: -1
+        function queueExposure(v) {
+            if (!exposurePushThrottle.running) {
+                sendTestBrightnessConfig(v)
+                exposurePushThrottle.start()
+            } else {
+                pendingExposure = Math.round(v)
+            }
+        }
+        function flushExposure(v) {
+            pendingExposure = -1
+            sendTestBrightnessConfig(v)
+        }
+        Timer {
+            id: exposurePushThrottle
+            interval: 100
+            repeat: false
+            onTriggered: {
+                if (iosCameraSettingsPopup.pendingExposure < 0) return
+                var v = iosCameraSettingsPopup.pendingExposure
+                iosCameraSettingsPopup.pendingExposure = -1
+                sendTestBrightnessConfig(v)
+                start()
+            }
+        }
+
         // ⭐ 颜色参数精调「还原」：关闭滤镜链路 → 设备回到未加滤镜的原图（这才是真正的还原），
         //   同时把 5 个参数值重置回默认，下次再调时从默认值起步。
         function resetColorTune() {
@@ -5878,6 +5941,10 @@ Rectangle {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
+                                    // 丢弃拖动节流中还没发出的值，避免覆盖复位后的默认值
+                                    iosCameraSettingsPopup.pendingColorPtype = ""
+                                    iosCameraSettingsPopup.pendingExposure = -1
+
                                     // 对焦：0.6
                                     iosCameraSettingsPopup.focusValue = 0.6
                                     focusSlider.value = 0.6
@@ -5914,6 +5981,8 @@ Rectangle {
                                     var resetSendFps = resolveSendFps(100)
                                     HttpClient.updateFps(resetSendFps)
                                     sendConfigUpdate("fps", {"fps": resetSendFps})
+                                    // 清晰度 50 原来只改了界面没下发
+                                    sendBitrateConfig()
 
                                     console.log("🔄 相机设定已复位（滤镜/LUT/硬件 1s 后统一下发）")
                                 }
@@ -6073,9 +6142,12 @@ Rectangle {
                     to: iosFilterPopup.gainTo
                     stepSize: iosFilterPopup.gainStep
                     value: iosCameraSettingsPopup.hardwareBrightness
-                    onMoved: iosCameraSettingsPopup.hardwareBrightness = value
+                    onMoved: {
+                        iosCameraSettingsPopup.hardwareBrightness = value
+                        iosCameraSettingsPopup.queueExposure(value)
+                    }
                     onPressedChanged: if (!pressed) {
-                        sendTestBrightnessConfig(value)
+                        iosCameraSettingsPopup.flushExposure(value)
                     }
                     
                     background: Rectangle {
@@ -6117,7 +6189,7 @@ Rectangle {
                             newValue = Math.max(isoSlider.from, Math.min(isoSlider.to, newValue))
                             isoSlider.value = newValue
                             iosCameraSettingsPopup.hardwareBrightness = newValue
-                            sendTestBrightnessConfig(newValue)
+                            iosCameraSettingsPopup.queueExposure(newValue)
                         }
                     }
                 }
@@ -6521,8 +6593,8 @@ Rectangle {
                         to: iosFilterPopup.brightnessTo
                         stepSize: iosFilterPopup.brightnessStep
                         value: iosFilterPopup.fBrightness
-                        onMoved: iosFilterPopup.fBrightness = value
-                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("brightness", iosFilterPopup.fBrightness)
+                        onMoved: { iosFilterPopup.fBrightness = value; iosCameraSettingsPopup.queueColorParam("brightness", value) }
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.flushColorParam("brightness", iosFilterPopup.fBrightness)
 
                         background: Rectangle {
                             x: tuneBrightnessSlider.leftPadding
@@ -6596,8 +6668,8 @@ Rectangle {
                         to: iosFilterPopup.contrastTo
                         stepSize: iosFilterPopup.contrastStep
                         value: iosFilterPopup.fContrast
-                        onMoved: iosFilterPopup.fContrast = value
-                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("contrast", iosFilterPopup.fContrast)
+                        onMoved: { iosFilterPopup.fContrast = value; iosCameraSettingsPopup.queueColorParam("contrast", value) }
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.flushColorParam("contrast", iosFilterPopup.fContrast)
 
                         background: Rectangle {
                             x: tuneContrastSlider.leftPadding
@@ -6670,8 +6742,8 @@ Rectangle {
                         to: iosFilterPopup.saturationTo
                         stepSize: iosFilterPopup.saturationStep
                         value: iosFilterPopup.fSaturation
-                        onMoved: iosFilterPopup.fSaturation = value
-                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("saturation", iosFilterPopup.fSaturation)
+                        onMoved: { iosFilterPopup.fSaturation = value; iosCameraSettingsPopup.queueColorParam("saturation", value) }
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.flushColorParam("saturation", iosFilterPopup.fSaturation)
 
                         background: Rectangle {
                             x: tuneSaturationSlider.leftPadding
@@ -6744,8 +6816,8 @@ Rectangle {
                         to: iosFilterPopup.chromaTo
                         stepSize: iosFilterPopup.chromaStep
                         value: iosFilterPopup.fChroma
-                        onMoved: iosFilterPopup.fChroma = value
-                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("chroma", iosFilterPopup.fChroma)
+                        onMoved: { iosFilterPopup.fChroma = value; iosCameraSettingsPopup.queueColorParam("chroma", value) }
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.flushColorParam("chroma", iosFilterPopup.fChroma)
 
                         background: Rectangle {
                             x: tuneChromaSlider.leftPadding
@@ -6818,8 +6890,8 @@ Rectangle {
                         to: iosFilterPopup.gammaTo
                         stepSize: iosFilterPopup.gammaStep
                         value: iosFilterPopup.fGamma
-                        onMoved: iosFilterPopup.fGamma = value
-                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.pushColorParam("gamma", iosFilterPopup.fGamma)
+                        onMoved: { iosFilterPopup.fGamma = value; iosCameraSettingsPopup.queueColorParam("gamma", value) }
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.flushColorParam("gamma", iosFilterPopup.fGamma)
 
                         background: Rectangle {
                             x: tuneGammaSlider.leftPadding
@@ -14177,6 +14249,12 @@ Rectangle {
             HttpClient.iosFilterDefaultsFailed.connect(function(code, msg) {
                 console.warn("🎨 [iOS-Filter] 拉默认值失败 (用前端 fallback): code=" + code + ", msg=" + msg)
                 iosFilterPopup.filterLoaded = true   // 失败也标记加载完, 用前端 fallback 值
+                // 相机设定「复位」触发的拉取失败：仍按当前值统一下发，否则滤镜/曝光一条都不会发
+                if (iosFilterPopup.restorePushPending) {
+                    iosFilterPopup.restorePushPending = false
+                    iosFilterPopup.requestDelayedIosPush("camera-restore")
+                    return
+                }
                 iosFilterPopup.tryAutoPush()
             })
             // ⭐ 三链路开关/硬件/LUT 配置
@@ -14507,6 +14585,12 @@ Rectangle {
             if (typeof ifChromaSlider     !== 'undefined') ifChromaSlider.value     = fChroma
             if (typeof ifGainSlider       !== 'undefined') ifGainSlider.value       = fGain
             if (typeof cameraSaturationSlider !== 'undefined') cameraSaturationSlider.value = fSaturation
+            // 相机设定「颜色参数精调」五个滑条（拖过之后 value 绑定已断，需显式回写）
+            if (typeof tuneBrightnessSlider !== 'undefined') tuneBrightnessSlider.value = fBrightness
+            if (typeof tuneContrastSlider   !== 'undefined') tuneContrastSlider.value   = fContrast
+            if (typeof tuneSaturationSlider !== 'undefined') tuneSaturationSlider.value = fSaturation
+            if (typeof tuneChromaSlider     !== 'undefined') tuneChromaSlider.value     = fChroma
+            if (typeof tuneGammaSlider      !== 'undefined') tuneGammaSlider.value      = fGamma
         }
 
         // ⭐ 综合亮度(0-100) → 驱动所有 brightSwitch=true 的参数
