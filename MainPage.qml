@@ -5693,7 +5693,7 @@ Rectangle {
     Window {
         id: iosCameraSettingsPopup
         width: 560
-        height: 800  // ⭐ 2026-08-14：新增「颜色参数精调」区（5 行滑块 + 标题），520 → 800
+        height: 850  // ⭐ 2026-08-14：新增「颜色参数精调」区（5 行滑块 + 标题），520 → 800；2026-09-28 加「去灰」行 → 850
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         color: "transparent"
         visible: false
@@ -5836,7 +5836,23 @@ Rectangle {
 
         // ⭐ 颜色参数精调「还原」：关闭滤镜链路 → 设备回到未加滤镜的原图（这才是真正的还原），
         //   同时把 5 个参数值重置回默认，下次再调时从默认值起步。
+        function applyClearPreset() {
+            pendingColorPtype = ""
+            iosFilterPopup.fBlackPoint = 0.08
+            iosFilterPopup.fSaturation = 1.12
+            iosFilterPopup.fContrast   = 1.08
+            iosFilterPopup.fBrightness = 0.08
+            // pushColorParam 首次会打开滤镜并全量下发（已含上面新值）；已开启时逐项下发
+            pushColorParam("blackPoint", iosFilterPopup.fBlackPoint)
+            pushColorParam("saturation", iosFilterPopup.fSaturation)
+            pushColorParam("contrast",   iosFilterPopup.fContrast)
+            pushColorParam("brightness", iosFilterPopup.fBrightness)
+            iosFilterPopup.syncIndividualParamUiFromFilter()
+            console.log("🎨 一键通透：去灰0.08 饱和度1.12 对比度1.08 亮度+0.08")
+        }
+
         function resetColorTune() {
+            iosFilterPopup.fBlackPoint = iosFilterPopup.blackPointDefault
             iosFilterPopup.fBrightness = iosFilterPopup.brightnessDefault
             iosFilterPopup.fSaturation = iosFilterPopup.saturationDefault
             iosFilterPopup.fContrast   = iosFilterPopup.contrastDefault
@@ -6568,8 +6584,113 @@ Rectangle {
                                 tuneContrastSlider.value   = iosFilterPopup.fContrast
                                 tuneChromaSlider.value     = iosFilterPopup.fChroma
                                 tuneGammaSlider.value      = iosFilterPopup.fGamma
+                                tuneBlackPointSlider.value = iosFilterPopup.fBlackPoint
                             }
                         }
+                    }
+
+                    // ⭐ 2026-09-28「一键通透」：客户反馈画面灰蒙蒙、颜色不干净（黑色被抬成深灰）。
+                    //   一次下发经验值：去灰(iOS 黑场)0.08 把发灰的黑压回纯黑并拉开层次，
+                    //   饱和度 1.12 / 对比度 1.08 让颜色干净，亮度 +0.08 补偿去灰后中间调略暗。
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: colorTuneClearText.width + 20
+                        height: 28
+                        radius: 6
+                        color: colorTuneClearArea.containsMouse ? "#1E4A6E" : "#173A57"
+                        border.color: "#3EA6FF"
+                        border.width: 1
+
+                        Text {
+                            id: colorTuneClearText
+                            anchors.centerIn: parent
+                            text: "一键通透"
+                            font.family: "PingFang HK"
+                            font.pixelSize: 13
+                            color: "#ECEFF4"
+                        }
+
+                        MouseArea {
+                            id: colorTuneClearArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: iosCameraSettingsPopup.applyClearPreset()
+                        }
+                    }
+                }
+
+                // 去灰（iOS 黑场 blackPoint：y = (y - bp) / (1 - bp)，把发灰的黑压回纯黑）
+                RowLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "去灰"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 60
+                    }
+
+                    Slider {
+                        id: tuneBlackPointSlider
+                        Layout.fillWidth: true
+                        from: 0.0
+                        to: 0.20
+                        stepSize: 0.01
+                        value: iosFilterPopup.fBlackPoint
+                        onMoved: { iosFilterPopup.fBlackPoint = value; iosCameraSettingsPopup.queueColorParam("blackPoint", value) }
+                        onPressedChanged: if (!pressed) iosCameraSettingsPopup.flushColorParam("blackPoint", iosFilterPopup.fBlackPoint)
+
+                        background: Rectangle {
+                            x: tuneBlackPointSlider.leftPadding
+                            y: tuneBlackPointSlider.topPadding + tuneBlackPointSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 200
+                            implicitHeight: 4
+                            width: tuneBlackPointSlider.availableWidth
+                            height: 4
+                            radius: 999
+                            color: "#232A38"
+
+                            Rectangle {
+                                width: tuneBlackPointSlider.visualPosition * parent.width
+                                height: parent.height
+                                radius: 999
+                                color: "#3EA6FF"
+                            }
+                        }
+
+                        handle: Rectangle {
+                            x: tuneBlackPointSlider.leftPadding + tuneBlackPointSlider.visualPosition * (tuneBlackPointSlider.availableWidth - width)
+                            y: tuneBlackPointSlider.topPadding + tuneBlackPointSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: "#FFFFFF"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.NoButton
+                            onWheel: function(wheel) {
+                                var delta = wheel.angleDelta.y > 0 ? tuneBlackPointSlider.stepSize : -tuneBlackPointSlider.stepSize
+                                var newValue = Math.max(tuneBlackPointSlider.from, Math.min(tuneBlackPointSlider.to, tuneBlackPointSlider.value + delta))
+                                tuneBlackPointSlider.value = newValue
+                                iosFilterPopup.fBlackPoint = newValue
+                                iosCameraSettingsPopup.queueColorParam("blackPoint", newValue)
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: Math.round(tuneBlackPointSlider.position * 100) + "%"
+                        font.family: "PingFang HK"
+                        font.pixelSize: 15
+                        color: "#ECEFF4"
+                        Layout.preferredWidth: 48
                     }
                 }
 
@@ -6633,7 +6754,7 @@ Rectangle {
                                 var newValue = Math.max(tuneBrightnessSlider.from, Math.min(tuneBrightnessSlider.to, tuneBrightnessSlider.value + delta))
                                 tuneBrightnessSlider.value = newValue
                                 iosFilterPopup.fBrightness = newValue
-                                iosCameraSettingsPopup.pushColorParam("brightness", newValue)
+                                iosCameraSettingsPopup.queueColorParam("brightness", newValue)
                             }
                         }
                     }
@@ -6708,7 +6829,7 @@ Rectangle {
                                 var newValue = Math.max(tuneContrastSlider.from, Math.min(tuneContrastSlider.to, tuneContrastSlider.value + delta))
                                 tuneContrastSlider.value = newValue
                                 iosFilterPopup.fContrast = newValue
-                                iosCameraSettingsPopup.pushColorParam("contrast", newValue)
+                                iosCameraSettingsPopup.queueColorParam("contrast", newValue)
                             }
                         }
                     }
@@ -6782,7 +6903,7 @@ Rectangle {
                                 var newValue = Math.max(tuneSaturationSlider.from, Math.min(tuneSaturationSlider.to, tuneSaturationSlider.value + delta))
                                 tuneSaturationSlider.value = newValue
                                 iosFilterPopup.fSaturation = newValue
-                                iosCameraSettingsPopup.pushColorParam("saturation", newValue)
+                                iosCameraSettingsPopup.queueColorParam("saturation", newValue)
                             }
                         }
                     }
@@ -6856,7 +6977,7 @@ Rectangle {
                                 var newValue = Math.max(tuneChromaSlider.from, Math.min(tuneChromaSlider.to, tuneChromaSlider.value + delta))
                                 tuneChromaSlider.value = newValue
                                 iosFilterPopup.fChroma = newValue
-                                iosCameraSettingsPopup.pushColorParam("chroma", newValue)
+                                iosCameraSettingsPopup.queueColorParam("chroma", newValue)
                             }
                         }
                     }
@@ -6930,7 +7051,7 @@ Rectangle {
                                 var newValue = Math.max(tuneGammaSlider.from, Math.min(tuneGammaSlider.to, tuneGammaSlider.value + delta))
                                 tuneGammaSlider.value = newValue
                                 iosFilterPopup.fGamma = newValue
-                                iosCameraSettingsPopup.pushColorParam("gamma", newValue)
+                                iosCameraSettingsPopup.queueColorParam("gamma", newValue)
                             }
                         }
                     }
@@ -14256,7 +14377,18 @@ Rectangle {
                 // 相机设定「复位」触发的拉取失败：仍按当前值统一下发，否则滤镜/曝光一条都不会发
                 if (iosFilterPopup.restorePushPending) {
                     iosFilterPopup.restorePushPending = false
-                    iosFilterPopup.requestDelayedIosPush("camera-restore")
+                    // coco 后台无此接口（404），复位要回到本地兜底默认值，否则只是把当前值再发一遍
+                    var p = iosFilterPopup
+                    p.fBrightness = p.brightnessDefault; p.prevBrightness = p.brightnessDefault
+                    p.fGamma      = p.gammaDefault;      p.prevGamma      = p.gammaDefault
+                    p.fContrast   = p.contrastDefault;   p.prevContrast   = p.contrastDefault
+                    p.fSaturation = p.saturationDefault; p.prevSaturation = p.saturationDefault
+                    p.fExposure   = p.exposureDefault;   p.prevExposure   = p.exposureDefault
+                    p.fChroma     = p.chromaDefault
+                    p.fBlackPoint = p.blackPointDefault
+                    p.fRedBoost   = p.redBoostDefault
+                    p.syncIndividualParamUiFromFilter()
+                    p.requestDelayedIosPush("camera-restore")
                     return
                 }
                 iosFilterPopup.tryAutoPush()
@@ -14595,6 +14727,7 @@ Rectangle {
             if (typeof tuneSaturationSlider !== 'undefined') tuneSaturationSlider.value = fSaturation
             if (typeof tuneChromaSlider     !== 'undefined') tuneChromaSlider.value     = fChroma
             if (typeof tuneGammaSlider      !== 'undefined') tuneGammaSlider.value      = fGamma
+            if (typeof tuneBlackPointSlider !== 'undefined') tuneBlackPointSlider.value = fBlackPoint
         }
 
         // ⭐ 综合亮度(0-100) → 驱动所有 brightSwitch=true 的参数
